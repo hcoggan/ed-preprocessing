@@ -31,9 +31,10 @@ library(yardstick)
 library(ggridges)
 library(comorbidity)
 
-setwd("/Volumes/chip-lacava/Groups/BCH-ED/")
-loadpath <- "raw-data/"
-savepath <- "reprocessing/"
+#setwd("/Volumes/chip-lacava/Groups/BCH-ED/")
+basepath <- "/rc-fs/chip-lacava/Groups/BCH-ED/"
+loadpath <- paste0(basepath,"raw-data/")
+savepath <- paste0(basepath,"reprocessing/")
 
 
 
@@ -1137,7 +1138,7 @@ visits <- visits %>% select(-c(X.1, mrn, zipcode, ethnicity, admission_request_t
     triage_end_time, V1))
 
 
-write.csv(visits, paste0(savepath, "preprocessed-visits.csv"))
+write.csv(visits, paste0(savepath, "preprocessed-visits-bill.csv"))
 
 # #Check how many visits are described by at least one complaint.
 # complaint_cols <- colnames(visits)[startsWith(colnames(visits), "complaint_contains_")]
