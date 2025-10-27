@@ -401,55 +401,6 @@ visits <- as.data.frame(fread("intermediate-files/visits-after-diagnoses.csv"))
 medrecon <- as.data.frame(fread("medrecon.csv")) %>% rename(mrn=subject_id, csn=stay_id)
 
 
-
-# #ETC codes group together drugs of a similar class. 
-# #With how many visits is each class of drugs associated?
-# drug_types <- medrecon %>% group_by(etccode, csn) %>% 
-#     summarise(count=1) %>%
-#     group_by(etccode) %>%
-#     summarise(num_drugs=sum(count)) %>% arrange(desc(num_drugs))
-
-# print(paste("We have", nrow(drug_types), "different drug types, with a maximum count of",
-#     max(drug_types$num_drugs), "and a minimum of", min(drug_types$num_drugs)))
-
-# print(paste("Of these drugs", nrow(filter(drug_types, num_drugs==1)), "are only associated with 1 visit,",
-#     nrow(filter(drug_types, num_drugs>10)), "are associated with more than 10 visits, and",
-#     nrow(filter(drug_types, num_drugs>100)), "are associated with more than 100 visits."))
-
-# #  "We have 1202 different drug types, with a maximum count of 100949 and a minimum of 1"
-# # "Of these drugs 83 are only associated with 1 visit, 874 are associated with more than 10 visits, and 565 are associated with more than 100 visits."
-
-# #We can also count the drug descriptions, which can group together ETC codes. For example, an ETC description is 
-# #"Asthma/COPD Therapy - Beta 2-Adrenergic Agents, Inhaled, Short Acting"-- we can just take the prefix.
-# #How many prefixes are there?
-
-# test_string <- "Asthma/COPD Therapy - Beta 2-Adrenergic Agents, Inhaled, Short Acting"
-
-# print(unlist(str_split(test_string, " - "))[1])
-
-# drug_names <- medrecon %>% 
-#     mutate(drug_prefix=purrr::map_vec(etcdescription, ~unlist(str_split(.x, " - "))[1][1])) %>%
-#     group_by(csn, drug_prefix) %>%
-#     summarise(count=1) %>%
-#     group_by(drug_prefix) %>%
-#     summarise(num_visits=sum(count)) %>%
-#     arrange(desc(num_visits))
-
-# print(head(drug_names))
-
-# print(paste("We have", nrow(drug_names), "different drug prefixes, with a maximum count of",
-#     max(drug_names$num_visits), "and a minimum of", min(drug_names$num_visits)))
-
-# print(paste("Of these prefixes", nrow(filter(drug_names, num_visits==1)), "are only associated with 1 visit,",
-#     nrow(filter(drug_names, num_visits>10)), "are associated with more than 10 visits, and",
-#     nrow(filter(drug_names, num_visits>100)), "are associated with more than 100 visits."))
-
-# # [1] "We have 562 different drug prefixes, with a maximum count of 104450 and a minimum of 1"
-# # [1] "Of these prefixes 37 are only associated with 1 visit, 425 are associated with more than 10 visits, and 296 are associated with more than 100 visits."
-# # > 
-# write.csv(drug_names, "intermediate-files/drug-names.csv")
-
-#This is too many types.
 #We can map drugs to predicted disease risk with the RxRisk tool. First, we have to map NDC codes to ATC-4 codes using the FDA's drug database:
 drug_codes <- read.csv("drug-codes.csv") 
 
