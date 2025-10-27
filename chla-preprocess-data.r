@@ -390,7 +390,7 @@ get_temporal_variables <- function(data) {
         TRUE ~ NA_character_
       ),
       
-      arrival_day_txfype = case_when(
+      arrival_day_type = case_when(
         wday(arrival_datetime) %in% c(6, 7) ~ "Weekend",
         wday(arrival_datetime) %in% c(1, 2, 3, 4, 5) ~ "Weekday",
         TRUE ~ NA_character_
@@ -1048,7 +1048,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                    "SDI_score", "triage_acuity", "insurance",
                    "disposition_datetime", "arrival_datetime", "triage_datetime", 
                    "minutes_since_first_arrival", "arrival_year", "arrival_season",
-                   "arrival_day_txfype", "arrival_time_block",
+                   "arrival_day_type", "arrival_time_block",
                    "arrival_mode", "preferred_language", "weight", 
                    "num_labs", "any_labs", "num_meds", "any_meds", "num_IV_meds", 
                    "any_IV_meds", "triage_vitals_time", colnames(data)[startsWith(colnames(data), "complaint") | startsWith(colnames(data), "diagnosis")],
