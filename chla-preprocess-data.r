@@ -1071,25 +1071,6 @@ data <- results$data
 table_triage_vitals <- results$table_triage_vitals
 table_all_vitals <- results$table_all_vitals
 
-#DEPRECATED- LEADS TO MULTIPLE JOINS
-
-# # Join main data with triage vitals table
-# table_triage_vitals_clean <- table_triage_vitals %>% # extract first element of list
-#   mutate(
-#     triage_heart_rate = sapply(heart_rate, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_),
-#     triage_respiratory_rate = sapply(respiratory_rate, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_),
-#     triage_oxygen_saturation = sapply(oxygen_saturation, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_),
-#     triage_temperature = sapply(temperature, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_),
-#     triage_systolic_bp = sapply(blood_pressure_systolic, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_),
-#     triage_diastolic_bp = sapply(blood_pressure_diastolic, function(x) if(length(x) > 0) as.numeric(x[1]) else NA_real_)
-#   ) 
-# table_triage_vitals_clean <- 
-#   table_triage_vitals_clean[, c("encounter_id", "triage_vitals_time", "triage_heart_rate",
-#                                 "triage_respiratory_rate", "triage_oxygen_saturation", 
-#                                 "triage_temperature", "triage_systolic_bp", "triage_diastolic_bp")]
-# data_with_triage_vitals <- data %>%
-#   left_join(table_triage_vitals_clean, by = c("id_visit" = "encounter_id"))
-
 
 # Save first 2 tables as CSV files
 #write.csv(data_with_triage_vitals, file.path("preprocessed_data_with_triage_vitals.csv"), row.names = FALSE)
