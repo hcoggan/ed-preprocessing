@@ -38,360 +38,360 @@ savepath <- "reprocessing/"
 
 
 
-# #First, load dispositions; this becomes the main dataframe.
-# visits <- as.data.frame(fread((paste0(loadpath, "LaCava_Dispositions_Aug7.csv")))) %>%
-#     select(MRN, NAME, DOB, ZIP_CODE, ETHNICITY,
-#     ADMIT_REQ_DT_TM, ROOMING_TIME, ED_CHECKIN_DT_TM, ED_DISPOSITION, 
-#     ED_CHECKOUT_DT_TM) %>% rename(ethnicity=ETHNICITY, zipcode=ZIP_CODE, mrn=MRN, name=NAME, dob=DOB,  
-#     arrival_time=ED_CHECKIN_DT_TM, departure_time=ED_CHECKOUT_DT_TM, 
-#     rooming_time=ROOMING_TIME, admission_request_time=ADMIT_REQ_DT_TM, disposition=ED_DISPOSITION) %>%
-#     distinct(mrn, name, dob, arrival_time, .keep_all = TRUE) #Rows are duplicated whenever a patient moves between department; we drop all relevant columns and keep only
-#     #the rows which uniquely identify a VISIT (combination of MRN, name, DOB, and arrival time.)
+#First, load dispositions; this becomes the main dataframe.
+visits <- as.data.frame(fread((paste0(loadpath, "LaCava_Dispositions_Aug7.csv")))) %>%
+    select(MRN, NAME, DOB, ZIP_CODE, ETHNICITY,
+    ADMIT_REQ_DT_TM, ROOMING_TIME, ED_CHECKIN_DT_TM, ED_DISPOSITION, 
+    ED_CHECKOUT_DT_TM) %>% rename(ethnicity=ETHNICITY, zipcode=ZIP_CODE, mrn=MRN, name=NAME, dob=DOB,  
+    arrival_time=ED_CHECKIN_DT_TM, departure_time=ED_CHECKOUT_DT_TM, 
+    rooming_time=ROOMING_TIME, admission_request_time=ADMIT_REQ_DT_TM, disposition=ED_DISPOSITION) %>%
+    distinct(mrn, name, dob, arrival_time, .keep_all = TRUE) #Rows are duplicated whenever a patient moves between department; we drop all relevant columns and keep only
+    #the rows which uniquely identify a VISIT (combination of MRN, name, DOB, and arrival time.)
 
-# print(paste("Initially, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+print(paste("Initially, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-# #To link other variables, like CSN, race, sex, insurance, weight and primary language, we need to pull from an older dataframe.
-# #Here we assume that ED_ARRIVAL_TIME and ED_CHECKIN_TIME are the same.
-# #We don't lose many visits doing this, so it should be fine.
-# demographics <- as.data.frame(fread(paste0(loadpath, "LaCava_Demopgraphics_May1_V1.csv"))) %>%
-#     select(CSN, MRN, NAME, DOB, RACE, SEX, GENDER, WEIGHT_KG, ED_ARRIVAL_MODE, ED_ARRIVAL_TIME, PREFERRED_LANGAUAGE,
-#     PRIMARY_INSURANCE_PAYORXX, ED_COMPLAINT) %>% rename(csn=CSN, mrn=MRN, name=NAME, dob=DOB, race=RACE, sex=SEX,
-#     weight=WEIGHT_KG, ed_arrival_mode=ED_ARRIVAL_MODE, arrival_time=ED_ARRIVAL_TIME, language=PREFERRED_LANGAUAGE,
-#      insurance=PRIMARY_INSURANCE_PAYORXX, gender=GENDER, complaint=ED_COMPLAINT) %>%
-#     group_by(csn) %>% mutate(duplicated=n()>1) %>% filter(!duplicated) %>% select(-duplicated) #CSNs may be duplicated across rows; drop all duplicated CSNs, 
-#     #as they are non-unique identifiers and may correspond to several visits, which then can't be uniquely identified.
-
-
-
-# #Link by name, DOB, and arrival time (assuming that arrival_time and checkin_time are the same)
-# visits <- visits %>% inner_join(demographics, by=c("mrn", "name", "dob", "arrival_time")) %>% 
-#     mutate(age_in_days=as.numeric(difftime(ymd_hm(arrival_time), ymd(dob), units="days"))) %>%
-#     select(-c(name, dob))
+#To link other variables, like CSN, race, sex, insurance, weight and primary language, we need to pull from an older dataframe.
+#Here we assume that ED_ARRIVAL_TIME and ED_CHECKIN_TIME are the same.
+#We don't lose many visits doing this, so it should be fine.
+demographics <- as.data.frame(fread(paste0(loadpath, "LaCava_Demopgraphics_May1_V1.csv"))) %>%
+    select(CSN, MRN, NAME, DOB, RACE, SEX, GENDER, WEIGHT_KG, ED_ARRIVAL_MODE, ED_ARRIVAL_TIME, PREFERRED_LANGAUAGE,
+    PRIMARY_INSURANCE_PAYORXX, ED_COMPLAINT) %>% rename(csn=CSN, mrn=MRN, name=NAME, dob=DOB, race=RACE, sex=SEX,
+    weight=WEIGHT_KG, ed_arrival_mode=ED_ARRIVAL_MODE, arrival_time=ED_ARRIVAL_TIME, language=PREFERRED_LANGAUAGE,
+     insurance=PRIMARY_INSURANCE_PAYORXX, gender=GENDER, complaint=ED_COMPLAINT) %>%
+    group_by(csn) %>% mutate(duplicated=n()>1) %>% filter(!duplicated) %>% select(-duplicated) #CSNs may be duplicated across rows; drop all duplicated CSNs, 
+    #as they are non-unique identifiers and may correspond to several visits, which then can't be uniquely identified.
 
 
-# print(head(visits))
 
-# print(paste("After linking demographics, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
-
-
-# #Save this linked file.
-# write.csv(visits, paste0(savepath, "intermediate-files/visits-with-linked-demographics.csv"))
-
-# #Load this file back.
-# visits <- as.data.frame(fread((paste0(savepath, "intermediate-files/visits-with-linked-demographics.csv"))))
+#Link by name, DOB, and arrival time (assuming that arrival_time and checkin_time are the same)
+visits <- visits %>% inner_join(demographics, by=c("mrn", "name", "dob", "arrival_time")) %>% 
+    mutate(age_in_days=as.numeric(difftime(ymd_hm(arrival_time), ymd(dob), units="days"))) %>%
+    select(-c(name, dob))
 
 
-# #First, handle dispositions. Check that everyone who isn't admitted has an unavailable admission request time:
-# admit_disposition_times <- visits %>% 
-#     group_by(disposition) %>% summarise(
-#         total=n(), 
-#         blank_req_time=sum(admission_request_time==""),
-#         frac_without_request_time=blank_req_time/total) %>%
-#     select(disposition, total, frac_without_request_time) %>% arrange(desc(total))
+print(head(visits))
 
-# write.csv(admit_disposition_times, paste0(savepath, "intermediate-files/fraction-of-visits-with-linked-admission-request-time.csv"))
+print(paste("After linking demographics, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-# #98% of visits which have a 'home' disposition have no admission request time; for 'discharge', it's 98.8%; for LWBS it's also close to 100%.
-# #0.6% of visits which have an 'ED Patient Admitted' disposition have a request time; for Admit, it's 0.1%.
 
-# #29,721 visits have an Unknown disposition, and of these, 51% have an admission request time.
-# #It's fairly safe to assume that those without an admission request time were not admitted, and those with one were admitted.
+#Save this linked file.
+write.csv(visits, paste0(savepath, "intermediate-files/visits-with-linked-demographics.csv"))
 
-# #Load vitals (except temperature.)
-# vitals <- as.data.frame(fread(paste0(loadpath, "LaCava_Vitals_Aug7.csv"))) %>% 
+#Load this file back.
+visits <- as.data.frame(fread((paste0(savepath, "intermediate-files/visits-with-linked-demographics.csv"))))
+
+
+#First, handle dispositions. Check that everyone who isn't admitted has an unavailable admission request time:
+admit_disposition_times <- visits %>% 
+    group_by(disposition) %>% summarise(
+        total=n(), 
+        blank_req_time=sum(admission_request_time==""),
+        frac_without_request_time=blank_req_time/total) %>%
+    select(disposition, total, frac_without_request_time) %>% arrange(desc(total))
+
+write.csv(admit_disposition_times, paste0(savepath, "intermediate-files/fraction-of-visits-with-linked-admission-request-time.csv"))
+
+#98% of visits which have a 'home' disposition have no admission request time; for 'discharge', it's 98.8%; for LWBS it's also close to 100%.
+#0.6% of visits which have an 'ED Patient Admitted' disposition have a request time; for Admit, it's 0.1%.
+
+#29,721 visits have an Unknown disposition, and of these, 51% have an admission request time.
+#It's fairly safe to assume that those without an admission request time were not admitted, and those with one were admitted.
+
+#Load vitals (except temperature.)
+vitals <- as.data.frame(fread(paste0(loadpath, "LaCava_Vitals_Aug7.csv"))) %>% 
+    select(CSN, VITAL_DATE_TIME, MEASUREMENT_DESC, VITAL) %>%
+    rename(csn=CSN, vital_time=VITAL_DATE_TIME,
+        measure=MEASUREMENT_DESC, value=VITAL) %>% filter(!(measure=="TEMPERATURE"))
+
+# #Load temperatures.
+# temps <- as.data.frame(fread(paste0(loadpath, "LaCava_Temperature.csv"))) %>% 
 #     select(CSN, VITAL_DATE_TIME, MEASUREMENT_DESC, VITAL) %>%
 #     rename(csn=CSN, vital_time=VITAL_DATE_TIME,
-#         measure=MEASUREMENT_DESC, value=VITAL) %>% filter(!(measure=="TEMPERATURE"))
+#         measure=MEASUREMENT_DESC, value=VITAL)
 
-# # #Load temperatures.
-# # temps <- as.data.frame(fread(paste0(loadpath, "LaCava_Temperature.csv"))) %>% 
-# #     select(CSN, VITAL_DATE_TIME, MEASUREMENT_DESC, VITAL) %>%
-# #     rename(csn=CSN, vital_time=VITAL_DATE_TIME,
-# #         measure=MEASUREMENT_DESC, value=VITAL)
+# print(table(month(temps$vital_time), year(temps$vital_time)))
 
-# # print(table(month(temps$vital_time), year(temps$vital_time)))
+# #Combine vitals.
+# vitals <- rbind(vitals, temps) 
 
-# # #Combine vitals.
-# # vitals <- rbind(vitals, temps) 
+#Save and load combined vitals.
+write.csv(vitals, paste0(savepath, "intermediate-files/combined-vitals.csv"))
+vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/combined-vitals.csv")))
 
-# #Save and load combined vitals.
-# write.csv(vitals, paste0(savepath, "intermediate-files/combined-vitals.csv"))
-# vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/combined-vitals.csv")))
+#Mark visits with no vitals (including vitals we don't use, like MAP and DBP).
+visits <- visits %>% mutate(any_recorded_vitals=(csn %in% vitals$csn))
 
-# #Mark visits with no vitals (including vitals we don't use, like MAP and DBP).
-# visits <- visits %>% mutate(any_recorded_vitals=(csn %in% vitals$csn))
+#Categorise dispositions.
+visits$disposition <- case_when(
+    (visits$disposition %in% c("Home", "Discharge")) | 
+    (visits$disposition == "Unknown" & visits$admission_request_time=="" & visits$any_recorded_vitals)  ~ "Discharge", # Assume a visit with recorded vitals and no admission request time is a discharge.
+    (visits$disposition %in% c("ED Patient Admitted", "Admit", "Send to OR")) | 
+    (visits$disposition == "Unknown" & !(visits$admission_request_time=="")) ~ "Admit", #We assume a visit with a recorded admit request time is an admission.
+    .default = "Other"
+)
 
-# #Categorise dispositions.
-# visits$disposition <- case_when(
-#     (visits$disposition %in% c("Home", "Discharge")) | 
-#     (visits$disposition == "Unknown" & visits$admission_request_time=="" & visits$any_recorded_vitals)  ~ "Discharge", # Assume a visit with recorded vitals and no admission request time is a discharge.
-#     (visits$disposition %in% c("ED Patient Admitted", "Admit", "Send to OR")) | 
-#     (visits$disposition == "Unknown" & !(visits$admission_request_time=="")) ~ "Admit", #We assume a visit with a recorded admit request time is an admission.
-#     .default = "Other"
-# )
+#Filter out those not admitted or discharged.
+visits <- visits %>% filter(disposition %in% c("Admit", "Discharge")) 
 
-# #Filter out those not admitted or discharged.
-# visits <- visits %>% filter(disposition %in% c("Admit", "Discharge")) 
+print(paste("After filtering those not admitted or discharged, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+write.csv(visits, paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv"))
 
-# print(paste("After filtering those not admitted or discharged, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
-# write.csv(visits, paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv"))
+#Load visits with preprocessed dispositions.
+visits <- as.data.frame(fread((paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv")))) %>%
+    select(-c(V1, any_recorded_vitals)) %>% mutate(is_admitted=ifelse(disposition=="Admit", 1, 0))
+print(paste("After filtering those not admitted or discharged, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-# #Load visits with preprocessed dispositions.
-# visits <- as.data.frame(fread((paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv")))) %>%
-#     select(-c(V1, any_recorded_vitals)) %>% mutate(is_admitted=ifelse(disposition=="Admit", 1, 0))
-# print(paste("After filtering those not admitted or discharged, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+#A person's sex is unknowable if it is recorded as X or U, and should be corrected to 'male'
+#if recorded as female but gender is 'transgender female' (and vice versa)
+#on the basis that 'transgender' is likelier to be correct.
+visits$sex <- case_when(
+    visits$sex %in% c("X", "U") ~ "Unknown",
+    visits$sex == "M" & visits$gender == "Transgender Male" ~ "F",
+    visits$sex == "F" & visits$gender == "Transgender Female" ~ "M",
+    .default = visits$sex
+)
 
-# #A person's sex is unknowable if it is recorded as X or U, and should be corrected to 'male'
-# #if recorded as female but gender is 'transgender female' (and vice versa)
-# #on the basis that 'transgender' is likelier to be correct.
-# visits$sex <- case_when(
-#     visits$sex %in% c("X", "U") ~ "Unknown",
-#     visits$sex == "M" & visits$gender == "Transgender Male" ~ "F",
-#     visits$sex == "F" & visits$gender == "Transgender Female" ~ "M",
-#     .default = visits$sex
-# )
+#Define whether a patient is trans or NB.
+#Only count 'NB' or 'other', not 'blank' (most visits), 'choose not to answer', 'don't know' or 'unable to collect'.
+visits$is_trans_or_nb <- ifelse(
+    (visits$sex == "F" & visits$gender %in% c("Male", "Transgender Male", "Nonbinary (e.g. genderqueer/gender nonconforming)", "Other")) |
+    (visits$sex == "M" & visits$gender %in% c("Female", "Transgender Female", "Nonbinary (e.g. genderqueer/gender nonconforming)", "Other")), 1, 0 
+)
 
-# #Define whether a patient is trans or NB.
-# #Only count 'NB' or 'other', not 'blank' (most visits), 'choose not to answer', 'don't know' or 'unable to collect'.
-# visits$is_trans_or_nb <- ifelse(
-#     (visits$sex == "F" & visits$gender %in% c("Male", "Transgender Male", "Nonbinary (e.g. genderqueer/gender nonconforming)", "Other")) |
-#     (visits$sex == "M" & visits$gender %in% c("Female", "Transgender Female", "Nonbinary (e.g. genderqueer/gender nonconforming)", "Other")), 1, 0 
-# )
+#Filter out patients with unknowable sex.
+visits <- visits %>% filter(sex %in% c("M", "F"))
 
-# #Filter out patients with unknowable sex.
-# visits <- visits %>% filter(sex %in% c("M", "F"))
+race_by_ethn <- visits %>% group_by(ethnicity, race) %>% summarise(num_visits=n())
+write.csv(race_by_ethn, paste0(savepath, "race-ethnicity.csv"))
+assert(1==0)
 
-# race_by_ethn <- visits %>% group_by(ethnicity, race) %>% summarise(num_visits=n())
-# write.csv(race_by_ethn, paste0(savepath, "race-ethnicity.csv"))
-# assert(1==0)
+print(paste("After filtering those without a legible sex, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-# print(paste("After filtering those without a legible sex, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+#Now categorise patients by ethnicity, using ethnicity to adjust 'unknown' or 'other' race/ethnicity if the ethnicity and racial groups overlap
+#(i.e. no editorialising about what counts as 'Asian'.
+#Anyone who puts their race as Hispanic/ethnicity as Hispanic is counted as Hispanic. Anyone who puts their race as Non-Hispanic Black OR their race as other/unknown and their ethnicity as Black
+#is counted as Non-Hispanic Black.
+visits$race <- case_when(
+    visits$race == "Asian, non-Hispanic" ~ "Asian",
+    visits$race == "Black, non-Hispanic" | 
+        ((visits$race=="Unknown" | visits$race == "Another Race, non-Hispanic") 
+         & visits$ethnicity=="Black") ~ "Non-Hispanic Black", #technically 'unknown' is not 'non-Hispanic' so those 107 Unknown/Black visits could all be Hispanic, but this is unlikely; we assume that everyone who has not
+                    #declared themselves to be Hispanic is not Hispanic.
+    visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic White",           
+    visits$race == "Hispanic" |  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic", 
+    visits$race == "Another Race, non-Hispanic" | visits$race == "Multiracial, non-Hispanic" ~ "Other",
+    visits$race == "White, non-Hispanic" ~ "Non-Hispanic White",
+    .default = visits$race
+)
 
-# #Now categorise patients by ethnicity, using ethnicity to adjust 'unknown' or 'other' race/ethnicity if the ethnicity and racial groups overlap
-# #(i.e. no editorialising about what counts as 'Asian'.
-# #Anyone who puts their race as Hispanic/ethnicity as Hispanic is counted as Hispanic. Anyone who puts their race as Non-Hispanic Black OR their race as other/unknown and their ethnicity as Black
-# #is counted as Non-Hispanic Black.
-# visits$race <- case_when(
-#     visits$race == "Asian, non-Hispanic" ~ "Asian",
-#     visits$race == "Black, non-Hispanic" | 
-#         ((visits$race=="Unknown" | visits$race == "Another Race, non-Hispanic") 
-#          & visits$ethnicity=="Black") ~ "Non-Hispanic Black", #technically 'unknown' is not 'non-Hispanic' so those 107 Unknown/Black visits could all be Hispanic, but this is unlikely; we assume that everyone who has not
-#                     #declared themselves to be Hispanic is not Hispanic.
-#     visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic White",           
-#     visits$race == "Hispanic" |  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic", 
-#     visits$race == "Another Race, non-Hispanic" | visits$race == "Multiracial, non-Hispanic" ~ "Other",
-#     visits$race == "White, non-Hispanic" ~ "Non-Hispanic White",
-#     .default = visits$race
-# )
+#Handle PRIMARY LANGUAGE, in more detail this time
+visits$language <- case_when(
+    visits$language %in% c("Arabic", "Cape Verdean", "Chinese Mandarin", "English", "Haitian Creole", "Portuguese", "Spanish") ~ visits$language, #all languages with over 1000 visits
+    .default = "Other"
+)
 
-# #Handle PRIMARY LANGUAGE, in more detail this time
-# visits$language <- case_when(
-#     visits$language %in% c("Arabic", "Cape Verdean", "Chinese Mandarin", "English", "Haitian Creole", "Portuguese", "Spanish") ~ visits$language, #all languages with over 1000 visits
-#     .default = "Other"
-# )
+#Handle INSURANCE (everything's uppercase in this field)
+visits$insurance <- case_when(
+    grepl("ACO|MEDICAID|COMMUNITY|MASSHEALTH", visits$insurance) ~ "Public",
+    .default = "Private"
+)
 
-# #Handle INSURANCE (everything's uppercase in this field)
-# visits$insurance <- case_when(
-#     grepl("ACO|MEDICAID|COMMUNITY|MASSHEALTH", visits$insurance) ~ "Public",
-#     .default = "Private"
-# )
-
-# #Link miles travelled, state of origin and SDI index.
-# #Because the libraries are only as good as the data and don't know about newer zip codes, there are 4900 visits
-# #with no miles travelled, either because their zip codes are invalid or because they're new.
-# #I have tried fixing this by loading latitude and longitude points for all zip codes, from
-# #the 2020 census tabulation (https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html)
-# #and it doesn't work (only fixes about 20 visits.)
+#Link miles travelled, state of origin and SDI index.
+#Because the libraries are only as good as the data and don't know about newer zip codes, there are 4900 visits
+#with no miles travelled, either because their zip codes are invalid or because they're new.
+#I have tried fixing this by loading latitude and longitude points for all zip codes, from
+#the 2020 census tabulation (https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html)
+#and it doesn't work (only fixes about 20 visits.)
 
 
-# #Identify distance travelled and state of origin.
-# #First look at state directly:
+#Identify distance travelled and state of origin.
+#First look at state directly:
 
-# states <- as.data.frame(reverse_zipcode(visits$zipcode)) %>%
-#     distinct(zipcode, state)
-# visits <- visits %>% left_join(states, by="zipcode") %>%
-#     rename(home_state=state) %>%
-#     mutate(
-#         miles_travelled = zip_distance(zipcode, "02115")$distance,
-#         state_of_origin = case_when(
-#             home_state == "MA" ~ "in-state",
-#             !is.na(home_state) ~ "out-of-state",
-#             .default = NA
-#         )
-#     ) %>% select(-home_state)
+states <- as.data.frame(reverse_zipcode(visits$zipcode)) %>%
+    distinct(zipcode, state)
+visits <- visits %>% left_join(states, by="zipcode") %>%
+    rename(home_state=state) %>%
+    mutate(
+        miles_travelled = zip_distance(zipcode, "02115")$distance,
+        state_of_origin = case_when(
+            home_state == "MA" ~ "in-state",
+            !is.na(home_state) ~ "out-of-state",
+            .default = NA
+        )
+    ) %>% select(-home_state)
 
 
 
-# #Link SDI scores to zip codes (from the Rober Graham Center).
-# sdi_scores <- read.csv(paste0(savepath, "intermediate-files/rgcsdi-2015-2019-zcta.csv")) %>% 
-#     rename(sdi_score=SDI_score) %>% 
-#     mutate(zipcode=ifelse(nchar(as.character(ZCTA5_FIPS))==4, paste0("0", as.character(ZCTA5_FIPS)), as.character(ZCTA5_FIPS))) %>% #Attach a 0 to the front of all 4-character zip codes.
-#     select(zipcode, sdi_score)
-# visits <- visits %>% left_join(sdi_scores, by="zipcode")
+#Link SDI scores to zip codes (from the Rober Graham Center).
+sdi_scores <- read.csv(paste0(savepath, "intermediate-files/rgcsdi-2015-2019-zcta.csv")) %>% 
+    rename(sdi_score=SDI_score) %>% 
+    mutate(zipcode=ifelse(nchar(as.character(ZCTA5_FIPS))==4, paste0("0", as.character(ZCTA5_FIPS)), as.character(ZCTA5_FIPS))) %>% #Attach a 0 to the front of all 4-character zip codes.
+    select(zipcode, sdi_score)
+visits <- visits %>% left_join(sdi_scores, by="zipcode")
 
-# print(sum(is.na(visits$sdi_score)))
+print(sum(is.na(visits$sdi_score)))
 
-# #Save this checkpoint.
-# write.csv(visits, paste0(savepath, "intermediate-files/visits-with-sdi-scores.csv"))
-# visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-sdi-scores.csv")))
+#Save this checkpoint.
+write.csv(visits, paste0(savepath, "intermediate-files/visits-with-sdi-scores.csv"))
+visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-sdi-scores.csv")))
 
-# print(head(visits))
+print(head(visits))
 
-# #To do: ED arrival mode, visit history, ED LOS, rooming time, time to admit request, time to departure (for patients),
-# #weight, complaint, triage vitals, temporal variables, diagnoses.
+#To do: ED arrival mode, visit history, ED LOS, rooming time, time to admit request, time to departure (for patients),
+#weight, complaint, triage vitals, temporal variables, diagnoses.
 
-# #Categorise ED arrival modes.
-# visits$ed_arrival_mode <- case_when(
-#     visits$ed_arrival_mode %in% c("Air transport",
-#         "Ambulance: Other EMS", "Ambulance", 
-#         "EMS", "Police") ~ "EMS",
-#     visits$ed_arrival_mode %in% c("Critical Care", 
-#         "Hospital Transport", "Transfer") ~ "Transfer",
-#     visits$ed_arrival_mode %in% c("Other", 
-#         "Unknown") ~ "Other/Unknown",   
-#     .default = "Walk in"
-# )
+#Categorise ED arrival modes.
+visits$ed_arrival_mode <- case_when(
+    visits$ed_arrival_mode %in% c("Air transport",
+        "Ambulance: Other EMS", "Ambulance", 
+        "EMS", "Police") ~ "EMS",
+    visits$ed_arrival_mode %in% c("Critical Care", 
+        "Hospital Transport", "Transfer") ~ "Transfer",
+    visits$ed_arrival_mode %in% c("Other", 
+        "Unknown") ~ "Other/Unknown",   
+    .default = "Walk in"
+)
 
-# #Find histories of prior visits.
-# #Assign each visit a timestamp: the difference in minutes between its arrival time and midnight on 1 Jan 2019; this will allow us to order visits relative to each other.
-# visits <- visits %>% 
-#     mutate(arbitrary_timestamp=as.numeric(difftime(lubridate::ymd_hm(arrival_time), lubridate::ymd_hm("2019-01-01 00:00"), units="mins")))
-
-
-# #To calculate prior visits we have to be able to uniquely identify patients, so discard all visits with no MRN.
-# visits <- visits %>% filter(!(mrn==""))
+#Find histories of prior visits.
+#Assign each visit a timestamp: the difference in minutes between its arrival time and midnight on 1 Jan 2019; this will allow us to order visits relative to each other.
+visits <- visits %>% 
+    mutate(arbitrary_timestamp=as.numeric(difftime(lubridate::ymd_hm(arrival_time), lubridate::ymd_hm("2019-01-01 00:00"), units="mins")))
 
 
-# print(paste("After filtering those without an MRN, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+#To calculate prior visits we have to be able to uniquely identify patients, so discard all visits with no MRN.
+visits <- visits %>% filter(!(mrn==""))
 
 
-# #Calculate prior visits within the last 30 days.
-# visits <- visits %>%
-#     arrange(mrn, arbitrary_timestamp) %>% group_by(mrn) %>%
-#     mutate(
-#         num_previous_admissions = purrr::map_dbl(row_number(), function(i) {
-#             current_time <- arbitrary_timestamp[i]
-#             thirty_days_ago <- current_time - 24*60*30
+print(paste("After filtering those without an MRN, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-#             sum(arbitrary_timestamp < current_time &
-#                 arbitrary_timestamp > thirty_days_ago &
-#                 is_admitted==1)
-#         }
-#             ),
-#         num_previous_visits_without_admission = purrr::map_dbl(row_number(), function(i) {
-#             current_time <- arbitrary_timestamp[i]
-#             thirty_days_ago <- current_time - 24*60*30
 
-#             sum(arbitrary_timestamp < current_time &
-#                 arbitrary_timestamp > thirty_days_ago &
-#                 is_admitted==0
-#             )}),
+#Calculate prior visits within the last 30 days.
+visits <- visits %>%
+    arrange(mrn, arbitrary_timestamp) %>% group_by(mrn) %>%
+    mutate(
+        num_previous_admissions = purrr::map_dbl(row_number(), function(i) {
+            current_time <- arbitrary_timestamp[i]
+            thirty_days_ago <- current_time - 24*60*30
+
+            sum(arbitrary_timestamp < current_time &
+                arbitrary_timestamp > thirty_days_ago &
+                is_admitted==1)
+        }
+            ),
+        num_previous_visits_without_admission = purrr::map_dbl(row_number(), function(i) {
+            current_time <- arbitrary_timestamp[i]
+            thirty_days_ago <- current_time - 24*60*30
+
+            sum(arbitrary_timestamp < current_time &
+                arbitrary_timestamp > thirty_days_ago &
+                is_admitted==0
+            )}),
     
-#     ) %>% ungroup() 
+    ) %>% ungroup() 
 
-# #Save this checkpoint dataframe.
-# write.csv(visits, paste0(savepath, "intermediate-files/visits-with-prior-visits.csv"))
+#Save this checkpoint dataframe.
+write.csv(visits, paste0(savepath, "intermediate-files/visits-with-prior-visits.csv"))
 
-# #Load this checkpoint dataframe.
-# visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-prior-visits.csv"))) %>% 
-#     select(-c(V1))
+#Load this checkpoint dataframe.
+visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-prior-visits.csv"))) %>% 
+    select(-c(V1))
 
-# #To do: 
-# #complaint, diagnoses, crowdedness
+#To do: 
+#complaint, diagnoses, crowdedness
 
 
-# #Define ED LOS, time to admit request, time from admit decision to departure.
-# visits <- visits %>% mutate(
-#     ed_los = as.numeric(difftime(ymd_hm(departure_time), ymd_hm(arrival_time), units="mins")), #Total length of a patient's visit.
-#     time_to_room = as.numeric(difftime(ymd_hm(rooming_time), ymd_hm(arrival_time), units="mins")), #Time until a patient is assigned a room.
-#     time_to_admit_request = as.numeric(difftime(ymd_hm(admission_request_time), ymd_hm(arrival_time), units="mins")), #FOR ADMITTED PATIENTS ONLY: time until a request to admit is made.
-#     time_from_request_to_admission = as.numeric(difftime(ymd_hm(departure_time), ymd_hm(admission_request_time), units="mins")), #FOR ADMITTED PATIENTS ONLY: time between the request to admit and the admission of a patient.
+#Define ED LOS, time to admit request, time from admit decision to departure.
+visits <- visits %>% mutate(
+    ed_los = as.numeric(difftime(ymd_hm(departure_time), ymd_hm(arrival_time), units="mins")), #Total length of a patient's visit.
+    time_to_room = as.numeric(difftime(ymd_hm(rooming_time), ymd_hm(arrival_time), units="mins")), #Time until a patient is assigned a room.
+    time_to_admit_request = as.numeric(difftime(ymd_hm(admission_request_time), ymd_hm(arrival_time), units="mins")), #FOR ADMITTED PATIENTS ONLY: time until a request to admit is made.
+    time_from_request_to_admission = as.numeric(difftime(ymd_hm(departure_time), ymd_hm(admission_request_time), units="mins")), #FOR ADMITTED PATIENTS ONLY: time between the request to admit and the admission of a patient.
     
-#     #Now decipher the time a patient arrived at the ED.
+    #Now decipher the time a patient arrived at the ED.
 
-#     year_of_arrival = year(arrival_time),
-#     month_of_arrival = month(arrival_time),
-#     day_of_week_of_arrival = wday(arrival_time),
-#     hour_of_arrival = hour(arrival_time),
+    year_of_arrival = year(arrival_time),
+    month_of_arrival = month(arrival_time),
+    day_of_week_of_arrival = wday(arrival_time),
+    hour_of_arrival = hour(arrival_time),
 
-#     #Month, weekday and hour are all coarsened into easier variables
-#     season = case_when(
-#         month_of_arrival %in% c(12, 1, 2) ~ "winter",
-#         month_of_arrival %in% c(3, 4, 5) ~ "spring",
-#         month_of_arrival %in% c(6, 7, 8) ~ "summer",
-#         month_of_arrival %in% c(9, 10, 11) ~ "autumn"
-#     ),
-#     is_weekend = ifelse(day_of_week_of_arrival==6 | day_of_week_of_arrival==7, 1, 0),
-#     time_of_day = case_when(
-#         hour_of_arrival < 6 ~ "small hours", #00:00 to 05:59
-#         hour_of_arrival < 12 ~ "morning", #06:00 to 11:59
-#         hour_of_arrival < 18 ~ "afternoon", #12:00 to 17:59
-#         hour_of_arrival < 24 ~ "evening" #18:00 to 23:59
-#     )
-# ) %>% select(-c(month_of_arrival, day_of_week_of_arrival, hour_of_arrival))
+    #Month, weekday and hour are all coarsened into easier variables
+    season = case_when(
+        month_of_arrival %in% c(12, 1, 2) ~ "winter",
+        month_of_arrival %in% c(3, 4, 5) ~ "spring",
+        month_of_arrival %in% c(6, 7, 8) ~ "summer",
+        month_of_arrival %in% c(9, 10, 11) ~ "autumn"
+    ),
+    is_weekend = ifelse(day_of_week_of_arrival==6 | day_of_week_of_arrival==7, 1, 0),
+    time_of_day = case_when(
+        hour_of_arrival < 6 ~ "small hours", #00:00 to 05:59
+        hour_of_arrival < 12 ~ "morning", #06:00 to 11:59
+        hour_of_arrival < 18 ~ "afternoon", #12:00 to 17:59
+        hour_of_arrival < 24 ~ "evening" #18:00 to 23:59
+    )
+) %>% select(-c(month_of_arrival, day_of_week_of_arrival, hour_of_arrival))
 
-# #Assign age groups
-# visits <- visits %>% mutate(
-#     age_group = case_when(
-#         age_in_days < 365.25/4 ~ "under_3_months",
-#         age_in_days < 365.25/2 ~ "three_to_6_months",
-#         age_in_days < 365.25 ~ "six_to_12_months",
-#         age_in_days < 3*365.25/2 ~ "twelve_to_18_months",
-#         age_in_days < 365.25*3 ~ "eighteen_months_to_3_years",
-#         age_in_days < 365.25*5 ~ "three_to_5_years",
-#         age_in_days < 365.25*10 ~ "five_to_10_years",
-#         age_in_days < 365.25*15 ~ "ten_to_15_years",
-#         age_in_days >= 365.25*15 ~ "fifteen_and_older",
-#         .default = NA
-#     )
-# )
+#Assign age groups
+visits <- visits %>% mutate(
+    age_group = case_when(
+        age_in_days < 365.25/4 ~ "under_3_months",
+        age_in_days < 365.25/2 ~ "three_to_6_months",
+        age_in_days < 365.25 ~ "six_to_12_months",
+        age_in_days < 3*365.25/2 ~ "twelve_to_18_months",
+        age_in_days < 365.25*3 ~ "eighteen_months_to_3_years",
+        age_in_days < 365.25*5 ~ "three_to_5_years",
+        age_in_days < 365.25*10 ~ "five_to_10_years",
+        age_in_days < 365.25*15 ~ "ten_to_15_years",
+        age_in_days >= 365.25*15 ~ "fifteen_and_older",
+        .default = NA
+    )
+)
 
-# #Save this checkpoint dataframe.
-# write.csv(visits, paste0(savepath, "intermediate-files/visits-with-age-groups.csv"))
-# #Load this out of memory.
-# visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-age-groups.csv")))
+#Save this checkpoint dataframe.
+write.csv(visits, paste0(savepath, "intermediate-files/visits-with-age-groups.csv"))
+#Load this out of memory.
+visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-age-groups.csv")))
 
-# print(paste("After filtering out those with no MRN, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
+print(paste("After filtering out those with no MRN, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
-# #Select arrival times and age group to identify and normalise triage vitals.
-# arrival_times_for_vitals <- visits %>% select(csn, arrival_time, age_group, age_in_days, ed_los)
+#Select arrival times and age group to identify and normalise triage vitals.
+arrival_times_for_vitals <- visits %>% select(csn, arrival_time, age_group, age_in_days, ed_los)
 
-# #Link vitals and weight.
+#Link vitals and weight.
 
-# #Load in pain scores.
-# scores <- as.data.frame(fread(paste0(loadpath, "LaCava_Scores_May7.csv"))) %>% 
-#     select(CSN, SCORE_DT_TIME, SCORE_VARIABLE, SCORE) %>% 
-#     rename(csn=CSN, vital_time=SCORE_DT_TIME, measure=SCORE_VARIABLE, value=SCORE) %>%
-#     filter(measure=="NRS Generalized Pain Score") %>% mutate(converted_measure="pain") %>%
-#     select(-measure)
+#Load in pain scores.
+scores <- as.data.frame(fread(paste0(loadpath, "LaCava_Scores_May7.csv"))) %>% 
+    select(CSN, SCORE_DT_TIME, SCORE_VARIABLE, SCORE) %>% 
+    rename(csn=CSN, vital_time=SCORE_DT_TIME, measure=SCORE_VARIABLE, value=SCORE) %>%
+    filter(measure=="NRS Generalized Pain Score") %>% mutate(converted_measure="pain") %>%
+    select(-measure)
 
 
-# #Then correct names of each vitals and record their timestamps within a visit.
-# vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/combined-vitals.csv"))) %>%
-#     filter(!(measure %in% c("MEAN ARTERIAL PRESSURE (DEVICE)", "DIASTOLIC BLOOD PRESSURE"))) %>% #Filter out MAP and DBP, which we don't need.
-#     mutate(upper_measure = toupper(measure), #Rename all vitals.
-#         converted_measure = case_when(
-#             upper_measure == "RESPIRATORY RATE" ~ "rr",
-#             upper_measure == "HEART RATE" ~ "hr",
-#             upper_measure == "SYSTOLIC BLOOD PRESSURE" ~ "sbp",
-#             upper_measure == "DIASTOLIC BLOOD PRESSURE" ~ "dbp",
-#             upper_measure == "OXYGEN SATURATION (SPO2)" ~ "sp_o2",
-#             #upper_measure %in% c("TEMP", "TEMPERATURE") ~ "temp",
-#         )) %>% select(csn, vital_time, converted_measure, value)
+#Then correct names of each vitals and record their timestamps within a visit.
+vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/combined-vitals.csv"))) %>%
+    filter(!(measure %in% c("MEAN ARTERIAL PRESSURE (DEVICE)", "DIASTOLIC BLOOD PRESSURE"))) %>% #Filter out MAP and DBP, which we don't need.
+    mutate(upper_measure = toupper(measure), #Rename all vitals.
+        converted_measure = case_when(
+            upper_measure == "RESPIRATORY RATE" ~ "rr",
+            upper_measure == "HEART RATE" ~ "hr",
+            upper_measure == "SYSTOLIC BLOOD PRESSURE" ~ "sbp",
+            upper_measure == "DIASTOLIC BLOOD PRESSURE" ~ "dbp",
+            upper_measure == "OXYGEN SATURATION (SPO2)" ~ "sp_o2",
+            #upper_measure %in% c("TEMP", "TEMPERATURE") ~ "temp",
+        )) %>% select(csn, vital_time, converted_measure, value)
 
-# #Add pain scores to other vitals.
-# vitals <- rbind(vitals, scores)
+#Add pain scores to other vitals.
+vitals <- rbind(vitals, scores)
 
-# print(head(vitals))
+print(head(vitals))
 
-# vitals <- vitals %>%
-#     rename(measure=converted_measure) %>%
-#     inner_join(arrival_times_for_vitals, by="csn") %>% #Link arrival times and ages.
-#     mutate(time_since_arrival=as.numeric(difftime(ymd_hm(vital_time), ymd_hm(arrival_time), units="mins"))) %>%
-#     filter(time_since_arrival >= 0, time_since_arrival <= ed_los) #Keep only vitals taken during the stay.
+vitals <- vitals %>%
+    rename(measure=converted_measure) %>%
+    inner_join(arrival_times_for_vitals, by="csn") %>% #Link arrival times and ages.
+    mutate(time_since_arrival=as.numeric(difftime(ymd_hm(vital_time), ymd_hm(arrival_time), units="mins"))) %>%
+    filter(time_since_arrival >= 0, time_since_arrival <= ed_los) #Keep only vitals taken during the stay.
 
-# # Save these vitals.
-# write.csv(vitals, paste0(savepath, "intermediate-files/vitals-with-age-and-pain.csv"))
+# Save these vitals.
+write.csv(vitals, paste0(savepath, "intermediate-files/vitals-with-age-and-pain.csv"))
     
 
 #Load this out of memory.
