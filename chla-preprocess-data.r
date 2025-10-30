@@ -994,8 +994,9 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
   
 #   IMAGING --------------------------------------------------------------------
 
-    data <- read.csv(paste0(savepath,"intermediate-files/visits-with-meds.csv"))
+  data <- read.csv(paste0(savepath,"intermediate-files/visits-with-meds.csv"))
   imaging_counts <- data_imaging %>% count(pecarn_submit_patientidentifier_demographics.encntr_id_hashed, name = "num_imaging")
+
   data <- data %>%
   left_join(
      imaging_counts, 
