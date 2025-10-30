@@ -981,11 +981,12 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
 
     data <- read.csv("intermediate-files/visits-with-meds.csv")
 
-  imaging_counts <- data_imaging %>% count(encntr_id, name = "num_imaging")
+  imaging_counts <- data_imaging %>% count(pecarn_submit_patientidentifier_demographics.encntr_id_hashed, name = "num_imaging")
+
   data <- data %>%
   left_join(
      imaging_counts, 
-     by = c("id_visit" = "encntr_id")
+     by = c("id_visit" = "pecarn_submit_patientidentifier_demographics.encntr_id_hashed")
    ) %>% 
    mutate(
      num_imaging = ifelse(is.na(num_imaging), 0, num_imaging),
