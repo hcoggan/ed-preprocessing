@@ -32,7 +32,8 @@ library(comorbidity)
 
 #Preprocess the BIDMC data.
 
-setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+#setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
 
 # pyxis <- read.csv("pyxis.csv") %>% group_by(name) %>%
 #     summarise(count=n()) %>% arrange(desc(count))
@@ -479,7 +480,9 @@ for (col in medication_names) {
 visits <- visits %>% select(-c(X.1, V1)) %>% clean_names()
 
 #Save visits
-write.csv(visits, "preprocessed-visits.csv")
+#write.csv(visits, "preprocessed-visits.csv")
+# WGL
+write.csv(visits, "preprocessed-visits-hispanic-expansive.csv")
 
  
 #Link VITAL SIGNS

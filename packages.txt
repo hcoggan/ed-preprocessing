@@ -22,3 +22,7 @@ comorbidity
 readr
 ggallin
 testit
+tidycmprsk
+unigd
+carrier
+mirai

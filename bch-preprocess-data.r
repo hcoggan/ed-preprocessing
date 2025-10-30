@@ -34,7 +34,8 @@ library(comorbidity)
 #setwd("/Volumes/chip-lacava/Groups/BCH-ED/")
 basepath <- "/rc-fs/chip-lacava/Groups/BCH-ED/"
 loadpath <- paste0(basepath,"raw-data/")
-savepath <- paste0(basepath,"reprocessing/")
+#savepath <- paste0(basepath,"reprocessing/")
+savepath <- paste0(basepath,"reprocessing-bill/")
 
 
 
@@ -164,7 +165,7 @@ visits <- visits %>% filter(sex %in% c("M", "F"))
 
 race_by_ethn <- visits %>% group_by(ethnicity, race) %>% summarise(num_visits=n())
 write.csv(race_by_ethn, paste0(savepath, "race-ethnicity.csv"))
-assert(1==0)
+#assert(1==0)
 
 print(paste("After filtering those without a legible sex, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
@@ -178,7 +179,9 @@ visits$race <- case_when(
         ((visits$race=="Unknown" | visits$race == "Another Race, non-Hispanic") 
          & visits$ethnicity=="Black") ~ "Non-Hispanic Black", #technically 'unknown' is not 'non-Hispanic' so those 107 Unknown/Black visits could all be Hispanic, but this is unlikely; we assume that everyone who has not
                     #declared themselves to be Hispanic is not Hispanic.
-    visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic White",           
+    #visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic White",           
+    # WGL
+    visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic",           
     visits$race == "Hispanic" |  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic", 
     visits$race == "Another Race, non-Hispanic" | visits$race == "Multiracial, non-Hispanic" ~ "Other",
     visits$race == "White, non-Hispanic" ~ "Non-Hispanic White",
@@ -1138,7 +1141,8 @@ visits <- visits %>% select(-c(X.1, mrn, zipcode, ethnicity, admission_request_t
     triage_end_time, V1))
 
 
-write.csv(visits, paste0(savepath, "preprocessed-visits-bill.csv"))
+#write.csv(visits, paste0(savepath, "preprocessed-visits-bill.csv"))
+write.csv(visits, paste0(savepath, "preprocessed-visits-bill-hispanic-expansive.csv"))
 
 # #Check how many visits are described by at least one complaint.
 # complaint_cols <- colnames(visits)[startsWith(colnames(visits), "complaint_contains_")]
