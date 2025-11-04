@@ -36,6 +36,7 @@ library(comorbidity)
 setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mc-med/disparities")
 
 
+
 #Load raw file.
 visits <- read.csv("visits.csv")
 
@@ -81,19 +82,10 @@ visits$Race <- case_when(
 )
 
 #ETHNICITY fields is just Hispanic, Non-Hispanic, Declines to State, Unknown, ""
-#155 people are Hispanic Black and 162 are Hispanic Asian-- neither are enough to break into their own category
-#but we separate Hispanic Whites (3460), include Hispanic Asian, and Hispanic Black with Hispanics, separating NHBs and Non-Hispanic Whites (43k)
-#assume that any white person who does not mark their ethnicity as Hispanic is Non-Hispanic
-#implicitly, Asian is also non-Hispanic Asian
+# WGL: Any patient reporting Hispanic is labelled as such
+# assume that any white/black person who does not mark their ethnicity as Hispanic is Non-Hispanic
+# assume Asian is also non-Hispanic Asian
 
-#visits$Race <- case_when(
-#    visits$Ethnicity=="Hispanic/Latino" & (!(visits$Race=="White"))  ~ "Hispanic",
-#    visits$Ethnicity=="Hispanic/Latino" & visits$Race=="White" ~ "Hispanic White",
-#    (!(visits$Ethnicity=="Hispanic/Latino")) & (visits$Race=="Black") ~ "Non-Hispanic Black",
-#    (!(visits$Ethnicity=="Hispanic/Latino")) & (visits$Race=="White") ~ "Non-Hispanic White",
-#    .default = visits$Race
-#)
-# WGL
 visits$Race <- case_when(
     visits$Ethnicity=="Hispanic/Latino" ~ "Hispanic",
     (!(visits$Ethnicity=="Hispanic/Latino")) & (visits$Race=="Black") ~ "Non-Hispanic Black",
@@ -489,5 +481,4 @@ raw_visits <- read.csv("visits.csv") %>%
 
 visits <- visits %>% inner_join(raw_visits, by="csn")
 
-#write.csv(visits, "preprocessed-visits-for-blanca.csv")
-write.csv(visits, "preprocessed-visits-for-bill-hispanic-expansive.csv")
+write.csv(visits, "preprocessed-visits.csv")

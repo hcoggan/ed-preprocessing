@@ -480,9 +480,7 @@ for (col in medication_names) {
 visits <- visits %>% select(-c(X.1, V1)) %>% clean_names()
 
 #Save visits
-#write.csv(visits, "preprocessed-visits.csv")
-# WGL
-write.csv(visits, "preprocessed-visits-hispanic-expansive.csv")
+write.csv(visits, "preprocessed-visits.csv")
 
  
 #Link VITAL SIGNS

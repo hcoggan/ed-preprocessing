@@ -19,7 +19,6 @@ plan(multicore, workers = 64)  # or set a number, e.g. workers = 4
 
 
 ## Working directory and paths
-#setwd("/Volumes/chip-lacava/Groups/CHLA-ED/raw-data/2025-07-14/De-identified dataset")
 basepath <- "/rc-fs/chip-lacava/Groups/CHLA-ED/"
 loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
 #savepath <- paste0(basepath,"reprocessing/")
@@ -644,19 +643,21 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
  group_race_ethnicity <- function(race_group_column, ethnicity_column) {
    case_when(
      is.na(race_group_column) ~ "unknown",
-     race_group_column %in% c("asian") ~ "asian",
-     race_group_column %in% c("black") & ethnicity_column == "Hispanic"  ~ "hispanic",
-     race_group_column %in% c("black") & ethnicity_column == "Non-Hispanic"  ~ "non_hispanic_black",
-     race_group_column %in% c("hispanic") ~ "hispanic", 
-     race_group_column %in% c("unknown") & ethnicity_column == "Hispanic" ~ "hispanic",
-     race_group_column %in% c("unknown") & ethnicity_column == "Non-Hispanic"~ "unknown",
-     race_group_column %in% c("unknown") & ethnicity_column == "Unknown"~ "unknown",
-     race_group_column %in% c("native") ~ "other",
-     race_group_column %in% c("other") & ethnicity_column == "Unknown" ~ "other",
-     race_group_column %in% c("other") & ethnicity_column == "Hispanic" ~ "hispanic", 
-     race_group_column %in% c("other") & ethnicity_column == "Non-Hispanic" ~ "other",
-     race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
-     race_group_column %in% c("white") & ethnicity_column == "Non-Hispanic" ~ "non_hispanic_white",
+     race_group_column == "asian" ~ "asian",
+     race_group_column == "black" & ethnicity_column == "Hispanic"  ~ "hispanic",
+     race_group_column == "black" & ethnicity_column == "Non-Hispanic"  ~ "non_hispanic_black",
+    #  race_group_column ==hispanic" ~ "hispanic", 
+     race_group_column == "unknown" & ethnicity_column == "Hispanic" ~ "hispanic",
+     race_group_column == "unknown" & ethnicity_column == "Non-Hispanic"~ "unknown",
+     race_group_column == "unknown" & ethnicity_column == "Unknown"~ "unknown",
+     race_group_column == "native" ~ "other",
+     race_group_column == "other" & ethnicity_column == "Unknown" ~ "other",
+     race_group_column == "other" & ethnicity_column == "Hispanic" ~ "hispanic", 
+     race_group_column == "other" & ethnicity_column == "Non-Hispanic" ~ "other",
+     # WGL: make hispanic thresholded (separate hispanic white group)
+     # WGL: comment out to make hispanic include white patients
+    #  race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
+     race_group_column == "white" & ethnicity_column == "Non-Hispanic" ~ "non_hispanic_white",
      .default = "unknown"
    )
  }
@@ -1121,4 +1122,3 @@ assert(nrow(visits)==length(unique(visits$id_visit)))
 savename <- paste0(savepath,"preprocessed_data_with_triage_vitals.csv")
 print(paste0("writing",savename))
 write.csv(visits, savename, row.names=FALSE)
-
