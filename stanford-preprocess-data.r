@@ -274,7 +274,7 @@ first_arrival_timestamps <- visits %>% filter(Visit_no==1) %>%
 #are marked by the number of minutes of separating the relevant arrival from the first arrival.
 visits <- visits %>% 
     inner_join(first_arrival_timestamps, by="MRN") %>%
-    mutate(minutes_since_first_arrival=difftime(ymd_hms(Arrival_time), ymd_hms(FirstArrivalTimestamp), units="mins")) %>%
+    mutate(minutes_since_first_arrival=as.numeric(difftime(ymd_hms(Arrival_time), ymd_hms(FirstArrivalTimestamp), units="mins"))) %>%
     select(-FirstArrivalTimestamp) 
 
 
@@ -329,7 +329,7 @@ pmh <- read.csv("pmh.csv")
 #So we attach the medical history known about each patient and filter out those known only after that arrival
 
 pmh_before_visit <- visits %>% select(CSN, MRN, Arrival_time) %>%
-    inner_join(pmh, by="MRN", relationship="many-to-many") %>% filter(difftime(ymd_hms(Noted_date), ymd_hms(Arrival_time), units="mins") < 0) %>%
+    inner_join(pmh, by="MRN", relationship="many-to-many") %>% filter(as.numeric(difftime(ymd_hms(Noted_date), ymd_hms(Arrival_time), units="mins")) < 0) %>%
     filter(CodeType=="Dx10") %>% #You can't convert ICD-9 to ICD-10 codes, or combine them when making CCI scores, so we have to just take ICD-10 codes.
     select(CSN, MRN, Code)
 
@@ -397,9 +397,9 @@ visits <- read.csv("intermediate-files/after-comorbidity-scores.csv")
 
 #Admit time can be discarded; it is absent for non-admitted patients and Dispo_time for admitted patients.
 
-visits$ed_los <- difftime(ymd_hms(visits$Departure_time), ymd_hms(visits$Arrival_time), units="mins")
-visits$time_to_rooming <- difftime(ymd_hms(visits$Roomed_time), ymd_hms(visits$Arrival_time), units="mins")
-visits$time_to_decision <- difftime(ymd_hms(visits$Dispo_time), ymd_hms(visits$Arrival_time), units="mins")
+visits$ed_los <- as.numeric(difftime(ymd_hms(visits$Departure_time), ymd_hms(visits$Arrival_time), units="mins"))
+visits$time_to_rooming <- as.numeric(difftime(ymd_hms(visits$Roomed_time), ymd_hms(visits$Arrival_time), units="mins"))
+visits$time_to_decision <- as.numeric(difftime(ymd_hms(visits$Dispo_time), ymd_hms(visits$Arrival_time), units="mins"))
 visits$time_between_decision_and_departure <- visits$ed_los - visits$time_to_decision
 
 #Check we have no repeating CSNs.
