@@ -1071,7 +1071,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                    "any_IV_meds", "triage_vitals_time", 
                    colnames(data)[startsWith(colnames(data), "complaint") | startsWith(colnames(data), "diagnosis")],
                    "crowdedness", "pseudo_nedocs", "num_previous_admissions", "num_previous_visits_without_admission",
-                   "raw_complaint", "raw_reason_for_visit")]
+                   "raw_complaint", "raw_reason_for_visit", "ed_los")]
   
   return(list(
     data = data,
@@ -1122,5 +1122,5 @@ assert(nrow(visits)==length(unique(visits$id_visit)))
 
 #Save visits with triage vitals.
 savename <- paste0(savepath,"preprocessed_data_with_triage_vitals.csv")
-print(paste0("writing",savename))
+print(paste0("writing ",savename))
 write.csv(visits, savename, row.names=FALSE)
