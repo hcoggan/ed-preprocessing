@@ -462,6 +462,7 @@ raw_visits <- read.csv("visits.csv") %>%
         raw_chief_complaint=CC) %>% clean_names()
 
 
-visits <- visits %>% select(-c(all_of(c(colnames(visits)[startsWith(colnames(visits), "complaint_contains_")])))) %>% inner_join(raw_visits, by="csn")
+# %>% select(-c(all_of(c(colnames(visits)[startsWith(colnames(visits), "complaint_contains_")])))) 
+visits <- visits %>% inner_join(raw_visits, by="csn")
 
-write.csv(visits, "preprocessed-visits.csv")
+write.csv(visits, "preprocessed-visits-for-blanca.csv")
