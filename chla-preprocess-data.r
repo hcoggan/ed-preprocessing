@@ -543,7 +543,6 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
   # DISPOSITION TIME -----------------------------------------------------------
   data <- data %>% mutate(disposition_datetime = ymd_hms(paste(pecarn_submit_eddisposition.eddepartdate,
                                      pecarn_submit_eddisposition.eddeparttime)))
-  
   write.csv(data, "intermediate-files/visits-with-disposition-time.csv")
   print("Saved disp. times")
 
@@ -554,12 +553,14 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                 all.x = TRUE)
 
   data <- data %>% mutate(arrival_datetime = ymd_hms(paste(pecarn_submit_visitinformation.eddoordate, pecarn_submit_visitinformation.eddoortime)))
-  
+
+  # LENGTH OF STAY ------------------------------------------------------------- 
+  data <- data %>% mutate(ed_los = as.numeric(difftime(disposition_datetime, arrival_datetime, units="mins"))) 
   # Check visit length
   # 30 visits with departure before arrival
-  data <- data[(data$disposition_datetime - data$arrival_datetime) > 0, ]
+  data <- data[data$ed_los > 0, ]
   # 248 visits with a duration longer than 36h
-  data <- data[(data$disposition_datetime - data$arrival_datetime) < 36*60*60, ]
+  data <- data[data$ed_los < 36*60*60, ]
   
   # Minutes since first arrival
   first_arrival <- min(data$arrival_datetime, na.rm = TRUE)
@@ -1052,7 +1053,8 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                    "arrival_day_type", "arrival_time_block",
                    "arrival_mode", "preferred_language", "weight", 
                    "num_labs", "any_labs", "num_meds", "any_meds", "num_IV_meds", 
-                   "any_IV_meds", "triage_vitals_time", colnames(data)[startsWith(colnames(data), "complaint") | startsWith(colnames(data), "diagnosis")],
+                   "any_IV_meds", "triage_vitals_time", 
+                   colnames(data)[startsWith(colnames(data), "complaint") | startsWith(colnames(data), "diagnosis")],
                    "crowdedness", "pseudo_nedocs", "num_previous_admissions", "num_previous_visits_without_admission",
                    "raw_complaint", "raw_reason_for_visit")]
   
