@@ -273,7 +273,7 @@ first_arrival_timestamps <- visits %>% filter(Visit_no==1) %>%
 #are marked by the number of minutes of separating the relevant arrival from the first arrival.
 visits <- visits %>% 
     inner_join(first_arrival_timestamps, by="MRN") %>%
-    mutate(minutes_since_first_arrival=difftime(Arrival_time, FirstArrivalTimestamp, units="mins")) %>%
+    mutate(minutes_since_first_arrival=as.numeric(difftime(ymd_hms(Arrival_time), ymd_hms(FirstArrivalTimestamp), units="mins"))) %>%
     select(-FirstArrivalTimestamp) 
 
 
@@ -328,7 +328,7 @@ pmh <- read.csv("pmh.csv")
 #So we attach the medical history known about each patient and filter out those known only after that arrival
 
 pmh_before_visit <- visits %>% select(CSN, MRN, Arrival_time) %>%
-    inner_join(pmh, by="MRN", relationship="many-to-many") %>% filter(difftime(Noted_date, Arrival_time, units="mins") < 0) %>%
+    inner_join(pmh, by="MRN", relationship="many-to-many") %>% filter(as.numeric(difftime(ymd_hms(Noted_date), ymd_hms(Arrival_time), units="mins")) < 0) %>%
     filter(CodeType=="Dx10") %>% #You can't convert ICD-9 to ICD-10 codes, or combine them when making CCI scores, so we have to just take ICD-10 codes.
     select(CSN, MRN, Code)
 
@@ -337,19 +337,6 @@ pmh_before_visit <- visits %>% select(CSN, MRN, Arrival_time) %>%
 
 #Now bind the ICD-10 codes corresponding to diagnoses attached to the visit.
 diagnoses_of_visit <- visits %>% select(CSN, MRN, Dx_ICD10) %>% rename(Code=Dx_ICD10)
-
-#Handle multiple diagnoses
-separate_diagnoses <- function(i, diagnoses) {
-    csn <- diagnoses$CSN[i]
-    codes <- trimws(unlist(strsplit(diagnoses$Code[i], ",")))
-    if (length(codes)>0) {
-        return(data.frame(CSN=csn, Code=codes))
-    } else {
-        return(data.frame(CSN=csn, Code=NA))
-    }
-}
-
-diagnoses_of_visit <- purrr::map_df(1:nrow(diagnoses_of_visit), ~separate_diagnoses(.x, diagnoses_of_visit), .progress=TRUE) 
 
 
 #Calculate scores for each visit, assigning a hierarchy so that only the most severe form of each comorb. is counted. Use Quan mapping.
@@ -397,10 +384,6 @@ visits <- read.csv("intermediate-files/after-comorbidity-scores.csv")
 #Length of stay is already there for us, but it's measured in hours, so let's calculated in minutes.
 #We have Arrival_time, Roomed_time, Admit_time, Dispo_time, Departure_time
 
-#Convert to a standard date format for comparison.
-visits$Departure_time <- as.POSIXct(visits$Departure_time, format="%Y-%m-%dT%H:%M:%SZ")
-visits$Roomed_time <- as.POSIXct(visits$Roomed_time, format="%Y-%m-%dT%H:%M:%SZ")
-visits$Dispo_time <- as.POSIXct(visits$Dispo_time, format="%Y-%m-%dT%H:%M:%SZ")
 
 # #What is the differences between Admit_time and Departure_time/Dispo_time?
 # admitted_visits <- visits %>% filter(is_admitted==1)
@@ -413,9 +396,9 @@ visits$Dispo_time <- as.POSIXct(visits$Dispo_time, format="%Y-%m-%dT%H:%M:%SZ")
 
 #Admit time can be discarded; it is absent for non-admitted patients and Dispo_time for admitted patients.
 
-visits$ed_los <- difftime(visits$Departure_time, visits$Arrival_time, units="mins")
-visits$time_to_rooming <- difftime(visits$Roomed_time, visits$Arrival_time, units="mins")
-visits$time_to_decision <- difftime(visits$Dispo_time, visits$Arrival_time, units="mins")
+visits$ed_los <- as.numeric(difftime(ymd_hms(visits$Departure_time), ymd_hms(visits$Arrival_time), units="mins"))
+visits$time_to_rooming <- as.numeric(difftime(ymd_hms(visits$Roomed_time), ymd_hms(visits$Arrival_time), units="mins"))
+visits$time_to_decision <- as.numeric(difftime(ymd_hms(visits$Dispo_time), ymd_hms(visits$Arrival_time), units="mins"))
 visits$time_between_decision_and_departure <- visits$ed_los - visits$time_to_decision
 
 #Check we have no repeating CSNs.
@@ -479,6 +462,6 @@ raw_visits <- read.csv("visits.csv") %>%
         raw_chief_complaint=CC) %>% clean_names()
 
 
-visits <- visits %>% inner_join(raw_visits, by="csn")
+visits <- visits %>% select(-c(all_of(c(colnames(visits)[startsWith(colnames(visits), "complaint_contains_")])))) %>% inner_join(raw_visits, by="csn")
 
 write.csv(visits, "preprocessed-visits.csv")

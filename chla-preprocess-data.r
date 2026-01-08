@@ -566,13 +566,15 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                by.y = "pecarn_submit_visitinformation.encntr_id", 
                all.x = TRUE)
 
- data <- data %>% mutate(arrival_datetime = ymd_hms(paste(pecarn_submit_visitinformation.eddoordate, pecarn_submit_visitinformation.eddoortime)))
-  
- # Check visit length
- # 30 visits with departure before arrival
- data <- data[(data$disposition_datetime - data$arrival_datetime) > 0, ]
- # 248 visits with a duration longer than 36h
- data <- data[(data$disposition_datetime - data$arrival_datetime) < 36*60*60, ]
+  data <- data %>% mutate(arrival_datetime = ymd_hms(paste(pecarn_submit_visitinformation.eddoordate, pecarn_submit_visitinformation.eddoortime)))
+
+  # LENGTH OF STAY ------------------------------------------------------------- 
+  data <- data %>% mutate(ed_los = as.numeric(difftime(disposition_datetime, arrival_datetime, units="mins"))) 
+  # Check visit length
+  # 30 visits with departure before arrival
+  data <- data[data$ed_los > 0, ]
+  # 248 visits with a duration longer than 36h
+  data <- data[data$ed_los < 36*60*60, ]
   
  # Minutes since first arrival
  first_arrival <- min(data$arrival_datetime, na.rm = TRUE)
