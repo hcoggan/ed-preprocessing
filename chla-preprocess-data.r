@@ -22,7 +22,7 @@ plan(multicore, workers = 64)  # or set a number, e.g. workers = 4
 basepath <- "/rc-fs/chip-lacava/Groups/CHLA-ED/"
 loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
 #savepath <- paste0(basepath,"reprocessing/")
-savepath <- paste0(basepath,"preprocessed-bill/")
+savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")
 
 
 
@@ -648,7 +648,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
      race_group_column == "asian" ~ "asian",
      race_group_column == "black" & ethnicity_column == "Hispanic"  ~ "hispanic",
      race_group_column == "black" & ethnicity_column == "Non-Hispanic"  ~ "non_hispanic_black",
-    #  race_group_column ==hispanic" ~ "hispanic", 
+     race_group_column == "hispanic" ~ "hispanic", 
      race_group_column == "unknown" & ethnicity_column == "Hispanic" ~ "hispanic",
      race_group_column == "unknown" & ethnicity_column == "Non-Hispanic"~ "unknown",
      race_group_column == "unknown" & ethnicity_column == "Unknown"~ "unknown",
