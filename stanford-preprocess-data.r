@@ -338,6 +338,19 @@ pmh_before_visit <- visits %>% select(CSN, MRN, Arrival_time) %>%
 #Now bind the ICD-10 codes corresponding to diagnoses attached to the visit.
 diagnoses_of_visit <- visits %>% select(CSN, MRN, Dx_ICD10) %>% rename(Code=Dx_ICD10)
 
+#Handle multiple diagnoses
+separate_diagnoses <- function(i, diagnoses) {
+    csn <- diagnoses$CSN[i]
+    codes <- trimws(unlist(strsplit(diagnoses$Code[i], ",")))
+    if (length(codes)>0) {
+        return(data.frame(CSN=csn, Code=codes))
+    } else {
+        return(data.frame(CSN=csn, Code=NA))
+    }
+}
+
+diagnoses_of_visit <- purrr::map_df(1:nrow(diagnoses_of_visit), ~separate_diagnoses(.x, diagnoses_of_visit), .progress=TRUE)
+
 
 #Calculate scores for each visit, assigning a hierarchy so that only the most severe form of each comorb. is counted. Use Quan mapping.
 
