@@ -32,7 +32,8 @@ library(comorbidity)
 
 #Preprocess the BIDMC data.
 
-setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+#setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
 
 # pyxis <- read.csv("pyxis.csv") %>% group_by(name) %>%
 #     summarise(count=n()) %>% arrange(desc(count))

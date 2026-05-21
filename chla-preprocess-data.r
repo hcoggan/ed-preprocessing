@@ -4,12 +4,25 @@ library(zipcodeR)
 library(dplyr)
 library(lubridate)
 library(purrr)
+library(furrr)
 library(tidyr)
 library(stringr)
 library(testit)
+library(data.table)
+#library(progressr)
+# choose how many parallel workers you want
+#options(future.globals.maxSize= 2000 * 1024 ^ 2)
 
-# Working directory and paths
-setwd("/Volumes/chip-lacava/Groups/CHLA-ED/raw-data/2025-07-14/De-identified dataset")
+#library(parallel)
+##plan(multisession, workers = parallel::detectCores())  
+plan(multicore, workers = 64)  # or set a number, e.g. workers = 4
+
+
+## Working directory and paths
+basepath <- "/rc-fs/chip-lacava/Groups/CHLA-ED/"
+loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
+#savepath <- paste0(basepath,"reprocessing/")
+savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")
 
 
 
@@ -51,7 +64,7 @@ get_weight_normalize  <- function(data, data_weight) {
         slice_min(datetime, n=1, with_ties=FALSE) %>%
         ungroup() %>% dplyr::select(id_visit, weightkg), by = "id_visit",  copy = TRUE
     ) %>%  rename(weight = weightkg)
-  
+ 
   # Normalize and categorize weights
   for (group in unique(data$age_group)) {
     indices <- which(data$age_group == group)
@@ -66,14 +79,14 @@ get_weight_normalize  <- function(data, data_weight) {
 
 # Get triage vitals recording time
 get_vital_signs_triage_time <- function(data_RR, data_HR, data_So2, data_temp, data_blood_pressure) {
-  
+ 
   # Rename encounter id columns
   data_RR <- data_RR %>% rename(encounter_id = pecarn_submit_respiratoryrate.encntr_id)
   data_HR <- data_HR %>% rename(encounter_id = pecarn_submit_heartrate.encntr_id)
   data_So2 <- data_So2 %>% rename(encounter_id = pecarn_submit_respiratorysupport.encntr_id)
   data_temp <- data_temp %>% rename(encounter_id = pecarn_submit_tempc.encntr_id)
   data_blood_pressure <- data_blood_pressure %>% rename(encounter_id = pecarn_submit_bloodpressure.encntr_id)
-  
+ 
   # Format recording times
   data_RR <- data_RR %>%
     mutate(vitals_datetime = paste(pecarn_submit_respiratoryrate.date, pecarn_submit_respiratoryrate.time),
@@ -90,12 +103,12 @@ get_vital_signs_triage_time <- function(data_RR, data_HR, data_So2, data_temp, d
   data_blood_pressure <- data_blood_pressure %>%
     mutate(vitals_datetime = paste(pecarn_submit_bloodpressure.date, pecarn_submit_bloodpressure.time),
            vitals_datetime = ymd_hms(vitals_datetime))
-  
+ 
   # Create vitals tables list
   vitals_list <- list(data_RR, data_HR, data_So2, data_temp, data_blood_pressure)
   names(vitals_list) <- c("data_RR", "data_HR", "data_So2", "data_temp", "data_blood_pressure")
   vitals_tables <- map(vitals_list, ~ list(data = .x, encounter_col = "encounter_id"))
-  
+ 
   # Extract earliest vitals time per visit
   triage_times_list <- map(vitals_tables, function(table_info) {
     table_info$data %>%
@@ -104,39 +117,39 @@ get_vital_signs_triage_time <- function(data_RR, data_HR, data_So2, data_temp, d
       summarise(earliest_vitals_time = min(vitals_datetime, na.rm = TRUE), .groups = "drop") %>%
       rename(encounter_id = !!sym(table_info$encounter_col))
   })
-  
+ 
   # Combine all tables and find the overall earliest time per visit
   triage_vitals_times <- bind_rows(triage_times_list) %>%
     group_by(encounter_id) %>%
     summarise(triage_vitals_time = min(earliest_vitals_time, na.rm = TRUE), .groups = "drop")
-  
+ 
   return(triage_vitals_times)
 }
 
 # Get table with triage vital signs
 get_triage_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_blood_pressure, triage_vitals_times) {
-  
+ 
   # Rename encounter id columns and format datetime for each dataset
   data_RR <- data_RR %>% 
     rename(encounter_id = pecarn_submit_respiratoryrate.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(paste(pecarn_submit_respiratoryrate.date, pecarn_submit_respiratoryrate.time)))
-  
+ 
   data_HR <- data_HR %>% 
     rename(encounter_id = pecarn_submit_heartrate.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(paste(pecarn_submit_heartrate.date, pecarn_submit_heartrate.time)))
-  
+ 
   data_So2 <- data_So2 %>% 
     rename(encounter_id = pecarn_submit_respiratorysupport.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(pecarn_submit_respiratorysupport.gid))
-  
+ 
   data_temp <- data_temp %>% 
     rename(encounter_id = pecarn_submit_tempc.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(paste(pecarn_submit_tempc.date, pecarn_submit_tempc.time)))
-  
+ 
   data_blood_pressure <- data_blood_pressure %>% 
     rename(encounter_id = pecarn_submit_bloodpressure.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(paste(pecarn_submit_bloodpressure.date, pecarn_submit_bloodpressure.time)))
-  
+ 
   # Create all_vitals table (combine all vitals with vital_type column)
   all_vitals <- bind_rows(
     data_RR %>% mutate(vital_type = "respiratory_rate") %>% 
@@ -153,7 +166,7 @@ get_triage_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_
       dplyr::select(encounter_id, vitals_datetime, vital_type, vital_value = pecarn_submit_bloodpressure.diastolicbp)
   ) %>%
     filter(!is.na(vitals_datetime))
-  
+ 
   # Create triage_vitals table (one row per encounter, one column per vital)
   table_triage_vitals <- all_vitals %>%
     left_join(triage_vitals_times, by = "encounter_id") %>%
@@ -171,39 +184,39 @@ get_triage_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_
       triage_vitals_times, 
       by = "encounter_id"
     )
-  
+ 
   # Return both tables
   return(table_triage_vitals)
 }
 
 # Get table with all vital signs
 get_all_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_blood_pressure) {
-  
+ 
   # Rename encounter id columns and format datetime for each dataset
   data_RR <- data_RR %>% 
     rename(encounter_id = pecarn_submit_respiratoryrate.encntr_id) %>%
     mutate(vitals_datetime = paste(pecarn_submit_respiratoryrate.date, pecarn_submit_respiratoryrate.time),
            vitals_datetime = ymd_hms(vitals_datetime))
-  
+ 
   data_HR <- data_HR %>% 
     rename(encounter_id = pecarn_submit_heartrate.encntr_id) %>%
     mutate(vitals_datetime = paste(pecarn_submit_heartrate.date, pecarn_submit_heartrate.time),
            vitals_datetime = ymd_hms(vitals_datetime))
-  
+ 
   data_So2 <- data_So2 %>% 
     rename(encounter_id = pecarn_submit_respiratorysupport.encntr_id) %>%
     mutate(vitals_datetime = ymd_hms(pecarn_submit_respiratorysupport.gid))
-  
+ 
   data_temp <- data_temp %>% 
     rename(encounter_id = pecarn_submit_tempc.encntr_id) %>%
     mutate(vitals_datetime = paste(pecarn_submit_tempc.date, pecarn_submit_tempc.time),
            vitals_datetime = ymd_hms(vitals_datetime))
-  
+ 
   data_blood_pressure <- data_blood_pressure %>% 
     rename(encounter_id = pecarn_submit_bloodpressure.encntr_id) %>%
     mutate(vitals_datetime = paste(pecarn_submit_bloodpressure.date, pecarn_submit_bloodpressure.time),
            vitals_datetime = ymd_hms(vitals_datetime))
-  
+ 
   # Create all_vitals table (combine all vitals with vital_type column)
   table_all_vitals <- bind_rows(
     data_RR %>% mutate(vital_type = "respiratory_rate") %>% 
@@ -220,7 +233,7 @@ get_all_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_blo
       dplyr::select(encounter_id, vitals_datetime, vital_type, vital_value = pecarn_submit_bloodpressure.diastolicbp)
   ) %>%
     filter(!is.na(vitals_datetime))
-  
+ 
   #Code used to pivot wider, but no need to do this here- long format is fine.
 
   return(table_all_vitals)
@@ -228,7 +241,7 @@ get_all_vitals_table <- function(data_RR, data_HR, data_So2, data_temp, data_blo
 
 # Add pain scores to vitals
 add_pain_scores_to_vitals <- function(data_painscore, triage_vitals_wide, all_vitals) {
-  
+ 
   # Process pain score data
   data_pain_processed <- data_painscore %>%
     rename(encounter_id = pecarn_submit_painscore.encntr_id) %>%  
@@ -238,32 +251,32 @@ add_pain_scores_to_vitals <- function(data_painscore, triage_vitals_wide, all_vi
     filter(!is.na(vitals_datetime))
 
    print(head(data_pain_processed))
-  
+ 
   # Add pain scores to triage vitals table
   triage_vitals_with_pain <- triage_vitals_wide %>%
     left_join(data_pain_processed, by = c("encounter_id", "triage_vitals_time" = "vitals_datetime"))
-  
+ 
   # Add pain scores to all vitals table (this is long format)
   data_pain_processed <- data_pain_processed %>% rename(vital_value=pain_score) %>% mutate(vital_type="pain")
   all_vitals_with_pain <- rbind(all_vitals, data_pain_processed)
-  
+ 
   return(list(
     triage_vitals_with_pain = triage_vitals_with_pain,
     all_vitals_with_pain = all_vitals_with_pain
   ))
-  
+ 
 }
 
 # Get diagnoses from diagnosis codes
 get_icd_scores_diagnosis <- function(data_diagnoses) {
-  
+ 
   # Generate ICD prefixes
   generate_icd_prefixes <- function(letter, start_num, end_num, exclude_nums = c()) {
     nums <- start_num:end_num
     nums <- nums[!nums %in% exclude_nums]
     paste0(letter, sprintf("%02d", nums))
   }
-  
+ 
   # Find condition for a given ICD code
   find_condition <- function(icd_code, code_dict) {
     for (condition in names(code_dict)) {
@@ -273,7 +286,7 @@ get_icd_scores_diagnosis <- function(data_diagnoses) {
     }
     return(NA)
   }
-  
+ 
   # Get condition from pre-computed mapping
   get_condition <- function(icd_code, unique_codes, corresponding_conditions) {
     if (icd_code %in% unique_codes) {
@@ -281,7 +294,7 @@ get_icd_scores_diagnosis <- function(data_diagnoses) {
     }
     return(NA)
   }
-  
+ 
   # Rename columns
   diagnoses <- data_diagnoses %>%
     rename(encounter_id = pecarn_submit_ps_diagnoses.encntr_id,
@@ -323,31 +336,31 @@ get_icd_scores_diagnosis <- function(data_diagnoses) {
     "smoking" = c("F17", "T65.2", "Z87.891"),
     "weight_loss" = c(generate_icd_prefixes("E", 40, 46, c()), "E64.0", "R63.4", "R64")
   )
-  
+ 
   # Get the conditions associated with each diagnosis
   unique_codes <- unique(diagnoses$DIAGNOSIS_CODE)
   corresponding_conditions <- purrr::map_vec(unique_codes, ~find_condition(.x, paed_icd_code_dict), .progress = TRUE)
   codes_with_conditions <- which(!is.na(corresponding_conditions))
-  
+ 
   unique_codes <- unique_codes[codes_with_conditions]
   corresponding_conditions <- corresponding_conditions[codes_with_conditions]
   names(corresponding_conditions) <- unique_codes
-  
+ 
   # Map conditions to diagnosis codes
   diagnoses$condition <- 
     purrr::map_vec(diagnoses$DIAGNOSIS_CODE, ~get_condition(.x, unique_codes, corresponding_conditions), .progress = TRUE)
   # 77% of the codes are not associated with a condition
-  
+ 
   # Filter out diagnoses that don't correspond to any condition
   diagnoses <- diagnoses %>% 
     filter(!is.na(condition))
-  
+ 
   # Get unique conditions per patient
   patient_conditions <- diagnoses %>% 
     group_by(encounter_id) %>% 
     distinct(condition, .keep_all = TRUE) %>%
     ungroup()
-  
+ 
   # Create binary indicator variables for each condition
   condition_indicators <- patient_conditions %>%
     mutate(value = 1) %>%
@@ -358,29 +371,29 @@ get_icd_scores_diagnosis <- function(data_diagnoses) {
       values_fill = 0,
       names_prefix = "diagnosis_"
     )
-  
+ 
   # Get all unique encounters to ensure all patients are included
   all_encounters <- data_diagnoses %>%
     select(pecarn_submit_ps_diagnoses.encntr_id) %>%
     rename(encounter_id = pecarn_submit_ps_diagnoses.encntr_id) %>%
     distinct()
-  
+ 
   # Join to include all patients, filling missing conditions with 0
   result <- all_encounters %>%
     left_join(condition_indicators, by = "encounter_id") %>%
     mutate(across(starts_with("diagnosis_"), ~replace_na(.x, 0)))
-  
+ 
   return(result)
 }
 
 # Get temporal variables
 get_temporal_variables <- function(data) {
-  
+ 
   data <- data %>%
     mutate(
       # Extract year
       arrival_year = year(arrival_datetime),
-      
+     
       # Create season based on month
       arrival_season = case_when(
         month(arrival_datetime) %in% c(12, 1, 2) ~ "Winter (Dec-Feb)",
@@ -389,13 +402,13 @@ get_temporal_variables <- function(data) {
         month(arrival_datetime) %in% c(9, 10, 11) ~ "Fall (Sep-Nov)",
         TRUE ~ NA_character_
       ),
-      
+     
       arrival_day_type = case_when(
         wday(arrival_datetime) %in% c(6, 7) ~ "Weekend",
         wday(arrival_datetime) %in% c(1, 2, 3, 4, 5) ~ "Weekday",
         TRUE ~ NA_character_
       ),
-      
+     
       # Create 6-hour time blocks
       arrival_time_block = case_when(
         hour(arrival_datetime) %in% 0:5 ~ "00:00-05:59",
@@ -405,20 +418,20 @@ get_temporal_variables <- function(data) {
         TRUE ~ NA_character_
       )
     )
-  
+ 
   return(data)
 }
-
 # Get crowdedness
 get_crowdedness <- function(data) {
- 
+
     #Get crowdedness scores and pseudo-NEDOCS scores: first, create specialised dataframes
     crowdedness_df <- data %>% 
         select(id_visit, arrival_datetime, disposition_datetime, triage_acuity) %>% 
           arrange(arrival_datetime)
 
     #Make a new dataframe with crowdedness scores
-    score_results <- purrr::map(
+    score_results <- furrr::future_map(
+    # score_results <- purrr::map(
         1:nrow(data), #Number of rows is the same
         function (i) {
             #Count visits which started earlier than the arrival time, and ended after;
@@ -428,14 +441,14 @@ get_crowdedness <- function(data) {
                 return(list(0, 0))
             } else {
                 present_at_arrival <- which(crowdedness_df$disposition_datetime[1:(i-1)] > crowdedness_df$arrival_datetime[i])
-            
+           
                 crowdedness_score <- length(present_at_arrival) #no offset, so present-at-arrival also gives indices in the original dataframe
                 pseudo_nedocs <-  sum(6-crowdedness_df$triage_acuity[present_at_arrival], na.rm=TRUE)
 
                 return(list(crowdedness_score, pseudo_nedocs)) #Crowdedness is number of patients there when you got to ED
                     #pseudo-NEDOCS weights them by severity, such that a level-1 patient contributes 5 points
             }
-            
+           
         }, .progress=TRUE
     )
 
@@ -456,7 +469,7 @@ get_prior_visits <- function(data) {
       num_previous_admissions = purrr::map_dbl(row_number(), function(i) {
         current_time <- minutes_since_first_arrival[i]
         thirty_days_ago <- current_time - 24*60*30
-        
+       
         sum(minutes_since_first_arrival < current_time &
               minutes_since_first_arrival > thirty_days_ago &
               disposition == "Admitted")
@@ -464,37 +477,37 @@ get_prior_visits <- function(data) {
       num_previous_visits_without_admission = purrr::map_dbl(row_number(), function(i) {
         current_time <- minutes_since_first_arrival[i]
         thirty_days_ago <- current_time - 24*60*30
-        
+       
         sum(minutes_since_first_arrival < current_time &
               minutes_since_first_arrival > thirty_days_ago &
               disposition == "Discharge")
       }),
     ) %>% ungroup()
-  
+ 
   return(visits)
 }
 
 # MAIN -------------------------------------------------------------------------
 
 # Load tables
-data <- read.table("PATIENTIDENTIFIER_and_DEMOGRAPHICS.txt", sep = "|", header = TRUE)
-data_age <- read.table("age_deid.txt", sep = "|", header = TRUE)
-data_visit <- read.table("VISITINFORMATION.txt", sep = "|", header = TRUE)
-data_weight <- read.table("WeightKg.txt", sep = "|", header = TRUE)
-data_disposition <- read.table("EDDISPOSITION.txt", sep = "|", header = TRUE)
-data_lab <- read.table("lab.txt", sep = "|", header = TRUE)
-data_meds <- read.table("med_administration.txt", sep = "|", header = TRUE)
-data_procedures <- read.table("PS_Procedures.txt", sep = "|", header = TRUE)
-data_imaging <- read.table("imaging_deid.txt", sep = "|", header = TRUE)
-data_diagnoses <- read.table("PS_Diagnoses.txt", sep = "|", header = TRUE)
-data_painscore <- read.table("painscore.txt", sep = "|", header = TRUE)
-data_reason <- read.table("reason_for_visit.txt", sep = "|", header = TRUE)
+data <- read.table(paste0(loadpath,"PATIENTIDENTIFIER_and_DEMOGRAPHICS.txt"), sep = "|", header = TRUE)
+data_age <- read.table(paste0(loadpath,"age_deid.txt"), sep = "|", header = TRUE)
+data_visit <- read.table(paste0(loadpath,"VISITINFORMATION.txt"), sep = "|", header = TRUE)
+data_weight <- read.table(paste0(loadpath,"WeightKg.txt"), sep = "|", header = TRUE)
+data_disposition <- read.table(paste0(loadpath,"EDDISPOSITION.txt"), sep = "|", header = TRUE)
+data_lab <- read.table(paste0(loadpath,"lab.txt"), sep = "|", header = TRUE)
+data_meds <- read.table(paste0(loadpath,"med_administration.txt"), sep = "|", header = TRUE)
+data_procedures <- read.table(paste0(loadpath,"PS_Procedures.txt"), sep = "|", header = TRUE)
+data_imaging <- read.table(paste0(loadpath,"imaging_deid.txt"), sep = "|", header = TRUE)
+data_diagnoses <- read.table(paste0(loadpath,"PS_Diagnoses.txt"), sep = "|", header = TRUE)
+data_painscore <- read.table(paste0(loadpath,"painscore.txt"), sep = "|", header = TRUE)
+data_reason <- read.table(paste0(loadpath,"reason_for_visit.txt"), sep = "|", header = TRUE)
 # Vital signs
-data_RR <- read.table("RespiratoryRate.txt", sep = "|", header = TRUE)
-data_HR <- read.table("HeartRate.txt", sep = "|", header = TRUE)
-data_So2 <- read.table("respiratorysupport.txt", sep = "|", header = TRUE)
-data_temp <- read.table("TempC.txt", sep = "|", header = TRUE)
-data_blood_pressure <- read.table("BloodPressure.txt", sep = "|", header = TRUE)
+data_RR <- read.table(paste0(loadpath,"RespiratoryRate.txt"), sep = "|", header = TRUE)
+data_HR <- read.table(paste0(loadpath,"HeartRate.txt"), sep = "|", header = TRUE)
+data_So2 <- read.table(paste0(loadpath,"respiratorysupport.txt"), sep = "|", header = TRUE)
+data_temp <- read.table(paste0(loadpath,"TempC.txt"), sep = "|", header = TRUE)
+data_blood_pressure <- read.table(paste0(loadpath,"BloodPressure.txt"), sep = "|", header = TRUE)
 
 print("Loaded all files")
 
@@ -505,52 +518,53 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                              data_So2, data_temp, data_blood_pressure) {
   
 
-  # VISIT ID (do not use edvisitid, use encntr_id) -----------------------------
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.encntr_id_hashed"] <- "id_visit"
-  # delete visits with duplicated IDs: 280 duplicated IDs
-  id_counts <- data %>% count(id_visit, name = "count")
-  data <- data %>% left_join(id_counts, by = "id_visit") %>%
-    filter(count == 1) %>% dplyr::select(-count)
+ # VISIT ID (do not use edvisitid, use encntr_id) -----------------------------
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.encntr_id_hashed"] <- "id_visit"
+ # delete visits with duplicated IDs: 280 duplicated IDs
+ id_counts <- data %>% count(id_visit, name = "count")
+ data <- data %>% left_join(id_counts, by = "id_visit") %>%
+   filter(count == 1) %>% dplyr::select(-count)
   
-  # PATIENT ID -----------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.medrecnbr_hashed"] <- "id_patient"
+ # PATIENT ID -----------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.medrecnbr_hashed"] <- "id_patient"
   
-  # DISPOSITION ----------------------------------------------------------------
-  data <- merge(data, data_disposition,  
-                by.x = "id_visit", 
-                by.y = "pecarn_submit_eddisposition.encntr_id", 
-                all.x = TRUE)
-  names(data)[names(data) == "pecarn_submit_eddisposition.disposition"] <- "disposition_raw"
-  group_disposition <- function(disposition_col) {
-    case_when(
-      disposition_col %in% c("Admitted", "Discharge & Admit to CHLA Rehab") ~ "Admitted",
-      disposition_col %in% c("Transfer to Other Medical Facility", "Other (OP) Medical Facility",
-                             "Discharge OP to Psychiatric Facility") ~ "Transfer",
-      disposition_col %in% c("Left prior to discharge", "Left prior to seeing MD", 
-                             "Left prior to visit", "Against Medical Advice") ~ "Left",
-      disposition_col %in% c("Home/Routine", "Discharge/Transfer to Home Health Care",
-                             "Discharge/Transfer to other SNF", "Discharge Home", 
-                             "Discharge/Transfer to Intermediate Care", "Residential Care Facility") ~ "Discharge",
-      disposition_col %in% c("Expired (ER)") ~ "Died",
-      TRUE ~ "other/unknown"
-    )
-  }
-  data <- data %>% mutate(disposition = group_disposition(disposition_raw))
-  # Drop disposition = "Left" (42,069) ,"Died" (20) & "other/unknown" (272)
-  data <- data %>%
-    filter(!disposition %in% c("Left", "Died", "other/unknown"))
+ # DISPOSITION ----------------------------------------------------------------
+ data <- merge(data, data_disposition,  
+               by.x = "id_visit", 
+               by.y = "pecarn_submit_eddisposition.encntr_id", 
+               all.x = TRUE)
+ names(data)[names(data) == "pecarn_submit_eddisposition.disposition"] <- "disposition_raw"
+ group_disposition <- function(disposition_col) {
+   case_when(
+     disposition_col %in% c("Admitted", "Discharge & Admit to CHLA Rehab") ~ "Admitted",
+     disposition_col %in% c("Transfer to Other Medical Facility", "Other (OP) Medical Facility",
+                            "Discharge OP to Psychiatric Facility") ~ "Transfer",
+     disposition_col %in% c("Left prior to discharge", "Left prior to seeing MD", 
+                            "Left prior to visit", "Against Medical Advice") ~ "Left",
+     disposition_col %in% c("Home/Routine", "Discharge/Transfer to Home Health Care",
+                            "Discharge/Transfer to other SNF", "Discharge Home", 
+                            "Discharge/Transfer to Intermediate Care", "Residential Care Facility") ~ "Discharge",
+     disposition_col %in% c("Expired (ER)") ~ "Died",
+     TRUE ~ "other/unknown"
+   )
+ }
+ data <- data %>% mutate(disposition = group_disposition(disposition_raw))
+ # Drop disposition = "Left" (42,069) ,"Died" (20) & "other/unknown" (272)
+ data <- data %>%
+   filter(!disposition %in% c("Left", "Died", "other/unknown"))
   
-  # DISPOSITION TIME -----------------------------------------------------------
-  data <- data %>% mutate(disposition_datetime = ymd_hms(paste(pecarn_submit_eddisposition.eddepartdate,
-                                     pecarn_submit_eddisposition.eddeparttime)))
-  write.csv(data, "intermediate-files/visits-with-disposition-time.csv")
-  print("Saved disp. times")
+ # DISPOSITION TIME -----------------------------------------------------------
+ data <- data %>% mutate(disposition_datetime = ymd_hms(paste(pecarn_submit_eddisposition.eddepartdate,
+                                    pecarn_submit_eddisposition.eddeparttime)))
+  
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-disposition-time.csv"))
+ print("Saved disp. times")
 
-  # ARRIVAL DATE & TIME --------------------------------------------------------
-  data <- merge(data, data_visit,  
-                by.x = "id_visit", 
-                by.y = "pecarn_submit_visitinformation.encntr_id", 
-                all.x = TRUE)
+ # ARRIVAL DATE & TIME --------------------------------------------------------
+ data <- merge(data, data_visit,  
+               by.x = "id_visit", 
+               by.y = "pecarn_submit_visitinformation.encntr_id", 
+               all.x = TRUE)
 
   data <- data %>% mutate(arrival_datetime = ymd_hms(paste(pecarn_submit_visitinformation.eddoordate, pecarn_submit_visitinformation.eddoortime)))
 
@@ -562,426 +576,428 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
   # 248 visits with a duration longer than 36h
   data <- data[data$ed_los < 36*60*60, ]
   
-  # Minutes since first arrival
-  first_arrival <- min(data$arrival_datetime, na.rm = TRUE)
-  data <- data %>%
-    mutate(
-      minutes_since_first_arrival = as.numeric(difftime(arrival_datetime, first_arrival, units = "mins"))
-    )
+ # Minutes since first arrival
+ first_arrival <- min(data$arrival_datetime, na.rm = TRUE)
+ data <- data %>%
+   mutate(
+     minutes_since_first_arrival = as.numeric(difftime(arrival_datetime, first_arrival, units = "mins"))
+   )
   
-  # TRIAGE DATE & TIME ---------------------------------------------------------
-  data <- data %>% mutate(triage_datetime = ymd_hms(paste(pecarn_submit_visitinformation.triagedate, pecarn_submit_visitinformation.triagetime)))
+ # TRIAGE DATE & TIME ---------------------------------------------------------
+ data <- data %>% mutate(triage_datetime = ymd_hms(paste(pecarn_submit_visitinformation.triagedate, pecarn_submit_visitinformation.triagetime)))
   
-  # TEMPORAL COARSENING --------------------------------------------------------
-  data <- get_temporal_variables(data)
+ # TEMPORAL COARSENING --------------------------------------------------------
+ data <- get_temporal_variables(data)
   
-  write.csv(data, "intermediate-files/visits-with-temporal-data.csv")
-  print("Saved temporal data")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-temporal-data.csv"))
+ print("Saved temporal data")
 
-  # AGE (years) ----------------------------------------------------------------
-  data_age$encntr_id_hashed <- gsub('^"|"$', '', data_age$encntr_id_hashed)
-  data <- merge(data, data_age, 
-                     by.x = "id_visit", 
-                     by.y = "encntr_id_hashed", 
-                     all.x = TRUE)
-  # 6 visits with negative age
-  data <- data[data$age >= 0, ]
+ # AGE (years) ----------------------------------------------------------------
+ data_age$encntr_id_hashed <- gsub('^"|"$', '', data_age$encntr_id_hashed)
+ data <- merge(data, data_age, 
+                    by.x = "id_visit", 
+                    by.y = "encntr_id_hashed", 
+                    all.x = TRUE)
+ # 6 visits with negative age
+ data <- data[data$age >= 0, ]
   
-  # Assign an age group
-  data <- data %>% mutate(age_group = get_age_group(age))
+ # Assign an age group
+ data <- data %>% mutate(age_group = get_age_group(age))
   
-  write.csv(data, "intermediate-files/visits-with-age.csv")
-  print("Saved age")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-age.csv"))
+ print("Saved age")
 
-  # SEX ------------------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.sexid"] <- "sex"
-  unique(data$sex)
-  # 12 "unknown", 3 "intersex"
-  data <- data %>% filter((sex =="M"| sex =="F")) # keep only M and F
+ # SEX ------------------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.sexid"] <- "sex"
+ unique(data$sex)
+ # 12 "unknown", 3 "intersex"
+ data <- data %>% filter((sex =="M"| sex =="F")) # keep only M and F
   
-  # RACE/ETHNICITY -------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.ethnicity"] <- "ethnicity"
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.race"] <- "race"
+ # RACE/ETHNICITY -------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.ethnicity"] <- "ethnicity"
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.race"] <- "race"
   
-  # Group races
-  # There are no NA values
-  group_race <- function(race_column) {
-    case_when(
-      is.na(race_column) ~ "unknown",
-      race_column %in% c("White", "Other White") ~ "white",
-      race_column %in% c("Alaska Native/Inuit", "First Nation/Indigenous/Native/Indian", 
-                         "Other First Nation/Indigenous/Native", "Native Hawaiian") ~ "native",
-      race_column %in% c("Asian", "Asian Indian", "Asian/Pacific", "Cambodian", "Chinese", 
-                         "Filipino", "Japanese", "Korean", "Laotian", "Other Asian", "South Asian", 
-                         "Thai", "Vietnamese") ~ "asian",
-      race_column %in% c("Black and/or African American", "African", "Afro Caribbean", 
-                         "Other Black and/or African American") ~ "black",
-      race_column %in% c("Cuban", "Guatemalan", "Latino/a/x and/or Hispanic", "Mexican/Mexican-American, 
-                         Chican(x)", "Other Latin(x) and/or Hispanic", "Puerto Rican", "Salvadorian") ~ "hispanic",
-      race_column %in% c("Declines to State") ~ "unknown",
-      TRUE ~ "other"
-    )
-  }
-  data <- data %>% mutate(race_groups= group_race(race))
+ # Group races
+ # There are no NA values
+ group_race <- function(race_column) {
+   case_when(
+     is.na(race_column) ~ "unknown",
+     race_column %in% c("White", "Other White") ~ "white",
+     race_column %in% c("Alaska Native/Inuit", "First Nation/Indigenous/Native/Indian", 
+                        "Other First Nation/Indigenous/Native", "Native Hawaiian") ~ "native",
+     race_column %in% c("Asian", "Asian Indian", "Asian/Pacific", "Cambodian", "Chinese", 
+                        "Filipino", "Japanese", "Korean", "Laotian", "Other Asian", "South Asian", 
+                        "Thai", "Vietnamese") ~ "asian",
+     race_column %in% c("Black and/or African American", "African", "Afro Caribbean", 
+                        "Other Black and/or African American") ~ "black",
+     race_column %in% c("Cuban", "Guatemalan", "Latino/a/x and/or Hispanic", "Mexican/Mexican-American, 
+                        Chican(x)", "Other Latin(x) and/or Hispanic", "Puerto Rican", "Salvadorian") ~ "hispanic",
+     race_column %in% c("Declines to State") ~ "unknown",
+     TRUE ~ "other"
+   )
+ }
+ data <- data %>% mutate(race_groups= group_race(race))
   
-  # Group ethnicity " " and "Unknown" 
-  data$ethnicity[data$ethnicity == " "] <- "Unknown"
+ # Group ethnicity " " and "Unknown" 
+ data$ethnicity[data$ethnicity == " "] <- "Unknown"
   
-  # Create race/ethnicity groups
-  group_race_ethnicity <- function(race_group_column, ethnicity_column) {
-    case_when(
-      is.na(race_group_column) ~ "unknown",
-      race_group_column %in% c("asian") ~ "asian",
-      race_group_column %in% c("black") & ethnicity_column == "Hispanic"  ~ "hispanic",
-      race_group_column %in% c("black") & ethnicity_column == "Non-Hispanic"  ~ "non_hispanic_black",
-      race_group_column %in% c("hispanic") ~ "hispanic", 
-      race_group_column %in% c("unknown") & ethnicity_column == "Hispanic" ~ "hispanic",
-      race_group_column %in% c("unknown") & ethnicity_column == "Non-Hispanic"~ "unknown",
-      race_group_column %in% c("unknown") & ethnicity_column == "Unknown"~ "unknown",
-      race_group_column %in% c("native") ~ "other",
-      race_group_column %in% c("other") & ethnicity_column == "Unknown" ~ "other",
-      race_group_column %in% c("other") & ethnicity_column == "Hispanic" ~ "hispanic", 
-      race_group_column %in% c("other") & ethnicity_column == "Non-Hispanic" ~ "other",
-      race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
-      race_group_column %in% c("white") & ethnicity_column == "Non-Hispanic" ~ "non_hispanic_white",
-      .default = "unknown"
-    )
-  }
-  data <- data %>% mutate(race_ethnicity = group_race_ethnicity(race_groups, ethnicity))
-  # 15,386 visits with unknown race/ethnicity
+ # Create race/ethnicity groups
+ group_race_ethnicity <- function(race_group_column, ethnicity_column) {
+   case_when(
+     is.na(race_group_column) ~ "unknown",
+     race_group_column == "asian" ~ "asian",
+     race_group_column == "black" & ethnicity_column == "Hispanic"  ~ "hispanic",
+     race_group_column == "black" & ethnicity_column == "Non-Hispanic"  ~ "non_hispanic_black",
+     race_group_column == "hispanic" ~ "hispanic", 
+     race_group_column == "unknown" & ethnicity_column == "Hispanic" ~ "hispanic",
+     race_group_column == "unknown" & ethnicity_column == "Non-Hispanic"~ "unknown",
+     race_group_column == "unknown" & ethnicity_column == "Unknown"~ "unknown",
+     race_group_column == "native" ~ "other",
+     race_group_column == "other" & ethnicity_column == "Unknown" ~ "other",
+     race_group_column == "other" & ethnicity_column == "Hispanic" ~ "hispanic", 
+     race_group_column == "other" & ethnicity_column == "Non-Hispanic" ~ "other",
+     # WGL: make hispanic thresholded (separate hispanic white group)
+     # WGL: comment out to make hispanic include white patients
+    #  race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
+     race_group_column == "white" & ethnicity_column == "Non-Hispanic" ~ "non_hispanic_white",
+     .default = "unknown"
+   )
+ }
+ data <- data %>% mutate(race_ethnicity = group_race_ethnicity(race_groups, ethnicity))
+ # 15,386 visits with unknown race/ethnicity
   
-  write.csv(data, "intermediate-files/visits-with-sex-and-race.csv")
-  print("Saved sex and race")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-sex-and-race.csv"))
+ print("Saved sex and race")
 
-  data <- read.csv("intermediate-files/visits-with-sex-and-race.csv")
+ data <- read.csv(paste0(savepath,"intermediate-files/visits-with-sex-and-race.csv"))
 
-  # ZIP CODE -------------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.zip"] <- "zip"
+ # ZIP CODE -------------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_patientidentifier_demographics.zip"] <- "zip"
   
-  # STATES: extract from ZIP codes
-  unique_zip_codes <- unique(data$zip)
-  unique_states <- purrr::map_vec(unique_zip_codes, get_state, .progress = TRUE)
-  valid_state <- which(!is.na(unique_states$state))
-  unique_zip_codes <- unique_zip_codes[valid_state]
-  unique_states <- unique_states[valid_state, ] 
-  state_lookup <- setNames(unique_states$state, unique_zip_codes)
-  data$state <- state_lookup[data$zip]
+ # STATES: extract from ZIP codes
+ unique_zip_codes <- unique(data$zip)
+ unique_states <- purrr::map_vec(unique_zip_codes, get_state, .progress = TRUE)
+ valid_state <- which(!is.na(unique_states$state))
+ unique_zip_codes <- unique_zip_codes[valid_state]
+ unique_states <- unique_states[valid_state, ] 
+ state_lookup <- setNames(unique_states$state, unique_zip_codes)
+ data$state <- state_lookup[data$zip]
   
-  # MILES TRAVELLED: extract from ZIP codes
-  data <- data %>% mutate(miles_travelled= as.numeric(zip_distance(zip, "90027")$distance))
+ # MILES TRAVELLED: extract from ZIP codes
+ data <- data %>% mutate(miles_travelled= as.numeric(zip_distance(zip, "90027")$distance))
   
-  # SOCIAL DEPRIVATION INDEX (SDI): Robert Graham Center's, 2019
-  sdi_scores <- read.csv("rgcsdi-2015-2019-zcta.csv")
-  sdi_scores$ZCTA5_FIPS <- sprintf("%05d", as.numeric(sdi_scores$ZCTA5_FIPS))
-  sdi_scores <- sdi_scores %>% select(ZCTA5_FIPS, SDI_score)
-  data <- left_join(data, sdi_scores, by=c("zip"="ZCTA5_FIPS"))
-  data$SDI_score <- ifelse(is.na(data$SDI_score), "unknown", data$SDI_score)
+ # SOCIAL DEPRIVATION INDEX (SDI): Robert Graham Center's, 2019
+ sdi_scores <- read.csv(paste0(loadpath,"rgcsdi-2015-2019-zcta.csv"))
+ sdi_scores$ZCTA5_FIPS <- sprintf("%05d", as.numeric(sdi_scores$ZCTA5_FIPS))
+ sdi_scores <- sdi_scores %>% select(ZCTA5_FIPS, SDI_score)
+ data <- left_join(data, sdi_scores, by=c("zip"="ZCTA5_FIPS"))
+ data$SDI_score <- ifelse(is.na(data$SDI_score), "unknown", data$SDI_score)
                   
 
-  write.csv(data, "intermediate-files/visits-with-socioeconomics.csv")
-  print("Saved socioec")
+ write.csv(data,paste0(savepath, "intermediate-files/visits-with-socioeconomics.csv"))
+ print("Saved socioec")
 
-  # TRIAGE ACUITY --------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_visitinformation.triagecategoryid"] <- "triage_acuity"
+ # TRIAGE ACUITY --------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_visitinformation.triagecategoryid"] <- "triage_acuity"
   
-  # CHIEF COMPLAINT ------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_visitinformation.complaint"] <- "raw_complaint"
+ # CHIEF COMPLAINT ------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_visitinformation.complaint"] <- "raw_complaint"
   
-  write.csv(data, "intermediate-files/visits-with-raw-complaint.csv")
-  print("Saved raw complaint")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-raw-complaint.csv"))
+ print("Saved raw complaint")
 
-  data <- read.csv("intermediate-files/visits-with-raw-complaint.csv")
+ data <- read.csv(paste0(savepath,"intermediate-files/visits-with-raw-complaint.csv"))
 
-  # Reason for visit
-  data_reason$pecarn_submit_patientidentifier_demographics.encntr_id_hashed <- 
-    gsub('^"|"$', '', data_reason$pecarn_submit_patientidentifier_demographics.encntr_id_hashed)
+ # Reason for visit
+ data_reason$pecarn_submit_patientidentifier_demographics.encntr_id_hashed <- 
+   gsub('^"|"$', '', data_reason$pecarn_submit_patientidentifier_demographics.encntr_id_hashed)
 
-  #Drop visits with no or a non-unique ID in the chief complaints table.
-  data_reason <- data_reason %>% group_by(pecarn_submit_patientidentifier_demographics.encntr_id_hashed) %>%
-    mutate(num_appearances=n()) %>% filter(num_appearances==1) %>% select(-num_appearances)
+ #Drop visits with no or a non-unique ID in the chief complaints table.
+ data_reason <- data_reason %>% group_by(pecarn_submit_patientidentifier_demographics.encntr_id_hashed) %>%
+   mutate(num_appearances=n()) %>% filter(num_appearances==1) %>% select(-num_appearances)
 
-   before_join <- nrow(data)
+  before_join <- nrow(data)
 
-  data <- merge(data, data_reason,  
-                by.x = "id_visit", 
-                by.y = "pecarn_submit_patientidentifier_demographics.encntr_id_hashed", 
-                all.x = FALSE) #We actually don't want visits with no identifiable chief complaint, per BCH
-  names(data)[names(data) == "cb.result_val"] <- "raw_reason_for_visit"
+ data <- merge(data, data_reason,  
+               by.x = "id_visit", 
+               by.y = "pecarn_submit_patientidentifier_demographics.encntr_id_hashed", 
+               all.x = FALSE) #We actually don't want visits with no identifiable chief complaint, per BCH
+ names(data)[names(data) == "cb.result_val"] <- "raw_reason_for_visit"
 
 
-  assert(nrow(data)==length(unique(data$id_visit)))
-  after_join <- nrow(data)
-  print(paste(before_join-after_join, "visits with no unique CSN in the complaint table."))
+ assert(nrow(data)==length(unique(data$id_visit)))
+ after_join <- nrow(data)
+ print(paste(before_join-after_join, "visits with no unique CSN in the complaint table."))
   
   
-  # Grouping reason for visit
-  all_complaints <- data$raw_reason_for_visit %>%
-    str_split(",") %>%                  # Split by commas
-    unlist() %>%                        # Flatten the list
-    trimws() %>%                        # Trim white space
-    str_to_lower() %>%                  # Convert to lowercase
-    table() %>%                         # Count frequencies
-    as.data.frame() %>%                 
-    rename(ComplaintPhrase = '.', Freq = Freq) %>%
-    arrange(desc(Freq))                 # Sort by frequency
+ # Grouping reason for visit
+ all_complaints <- data$raw_reason_for_visit %>%
+   str_split(",") %>%                  # Split by commas
+   unlist() %>%                        # Flatten the list
+   trimws() %>%                        # Trim white space
+   str_to_lower() %>%                  # Convert to lowercase
+   table() %>%                         # Count frequencies
+   as.data.frame() %>%                 
+   rename(ComplaintPhrase = '.', Freq = Freq) %>%
+   arrange(desc(Freq))                 # Sort by frequency
   
-  # Define pediatric complaints according to PERC clusters.
-  perc_complaints <- list(
-    "abdominal_pain" = c("abdominal pain", "other: flank pain",
-                         "other: epigastric pain", "other: gi complaint",
-                         "other: groin pain", "other: abdominal distention"),
-    "assault" = c("other: assault"),
-    "allergic_reaction" = c("allergic reaction"),
-    "altered_mental_status" = c("aloc/behavior changes"),
-    "asthma_or_wheezing" = c("other: wheezing"),
-    "bites_or_stings" = c("bite", "other: dog bite", "other: bug bites",
-                          "other: insect bite", "other: bug bite", 
-                          "other: bee sting", "other: insect bites"),
-    "burn" = c("burn"),
-    "cardiac" = c("chest pain/arrhythmia", "other: tachycardia", "other: palpitations",
-                  "other: brue", "other: bradycardia", "other: svt"),
-    "chest_pain" = c("other: rib pain", "other: breast pain", "other: chest pain"),
-    # "chronic_disease" = c(), # no HIV, 5 sickle, 3 cancer, 6 diabetes
-    "congestion" = c("congestion", "other: runny nose"),
-    "constipation" = c("constipation", "other: rectal pain", "no bowel movement",
-                       "other: dysuria"),
-    "cough" = c("cough"),
-    # "croup" = c(), # only 9 visits
-    "crying_or_colic" = c("crying excessively", "other: fussy", "other: fussiness",
-                          "other: increased fussiness", "other: irritability"),
-    "dental" = c("dental/mouth pain", "other: mouth sores", "other: jaw pain",
-                 "other: mouth pain", "other: tooth pain", "other: mouth injury"),
-    "device_complication" = c("g/j tube problem", "cvc problem", "other: ng tube out",
-                              "other: ngt out", "other: vp shunt", "other: vps"),
-    "diarrhea" = c("diarrhea"),
-    "ear_complaint" = c("ear complaint"),
-    "epistaxis" = c("other: nose bleed", "other: nosebleed", "other: epistaxis",
-                    "other: nose bleeds", "other: nosebleeds", "other: bloody nose",
-                    "other: epitaxis"),
-    "extremity" = c("lower extremity pain/injury", "upper extremity pain/injury",
-                    "other: joint pain", "other: finger injury", "other: ingrown toe nail",
-                    "other: ingrown toenail", "other: hip pain", "other: shoulder pain",
-                    "other: leg pain", "other: finger pain", "other: toe pain"),
-    "eye_complaint" = c("eye complaint", "vision problem"),
-    "syncope" = c("syncopal episode", "other: near syncope", "other: syncope"),
-    "foreign_body" = c("foreign body in ear/nose", "foreign body ingestion"), 
-    "fever" = c("fever", "fever >5 days", "fever-immunocompromised"), 
-    "follow_up" = c("abnormal labs", "well child check", "abnormal imaging",
-                    "scan", "cast check", "surgical site problem",
-                    "other: suture removal",  "other: staple removal",
-                    "needs blood product/sedation/imaging", "other: wound check",
-                    "other: bili check", "other: stitch removal"),
-    "general" = c("pain crisis", "other: body aches", "other: fatigue",
-                  "other: weakness", "other: bodyaches", "other: pain",
-                  "other: lethargy", "other: chills", "other: numbness", 
-                  "other: lethargic", "fatigue", "other: hypothermia",
-                  "other: pale", "weakness", "other: body ache", 
-                  "other: body pain", "other: generalized weakness",
-                  "bleeding"), 
-    "gi_bleed" = c("other: blood in stool", "other: bloody stool",
-                   "other: bloody stools", "other: hematuria", "other: black stool"),
-    "gynecologic" = c("gu complaint", "other: mva", "other: vaginal bleeding",
-                      "other: vaginal pain"),
-    "head_or_neck" = c("closed head injury", "other: head injury", 
-                       "other: facial swelling", "other: facial injury",
-                       "other: nose pain", "other: nasal injury",
-                       "other: nose complaint", "other: neck swelling"),
-    "headache" = c("headache"),
-    "laceration" = c("laceration", "other: gsw"),
-    "lump_or_mass" = c("swelling/lesion"), 
-    "male_genital" = c("testicular complaint", "other: penile pain",
-                       "other: penile swelling", "other: penis pain"),
-    "mvc" = c("other: mvc", "other: peds vs auto", "other: auto vs peds"),
-    "neck_pain" = c("other: neck pain"),
-    "neurologic" = c("other: dizziness", "gait disturbance", "other: dizzy",
-                     "other: abnormal movements", "other: facial droop",
-                     "dizziness", "other: twitching", "other: spasms",
-                     "other: abnormal movement", "other: facial numbness",
-                     "other: facial drooping", "other: tremors"),
-    "poisoning" = c("substance ingestion", "other: ingestion"),
-    "poor_feeding" = c("decreased po's", "other: weight loss", "other: ftt",
-                       "weight loss", "other: poor weight gain", "other: decreased po",
-                       "other: difficulty swallowing", "other: lip swelling"),
-    #"pregnancy" = c(),
-    "primary_care" = c("needs medication/supplies"),
-    "psych" = c("si/hi/depression", "other: anxiety",
-                "other: panic attack", "other: anxiety attack"),
-    "rash" = c("rash", "other: diaper rash", "other: skin problem", 
-               "other: hives", "other: eczema", "other: itching"),
-    "other_respiratory" = c("breathing difficulty", "choking episode/color change",
-                            "increase in trach. secretions", "other: hypoxia",
-                            "other: sob"),
-    "seizure" = c("seizure"),
-    "sore_throat" = c("throat pain", "other: sore throat"),
-    "trauma" = c("back/neck pain", "other: fall", "other: nose injury",
-                 "other: bruising", "other: back pain", "other: straddle injury",
-                 "other: trauma", "other: abrasion"),
-    "urinary" = c("other: painful urination", "other: decreased uop"),
-    "vomiting" = c("vomiting", "other: nausea", "nausea")
-  )
+ # Define pediatric complaints according to PERC clusters.
+ perc_complaints <- list(
+   "abdominal_pain" = c("abdominal pain", "other: flank pain",
+                        "other: epigastric pain", "other: gi complaint",
+                        "other: groin pain", "other: abdominal distention"),
+   "assault" = c("other: assault"),
+   "allergic_reaction" = c("allergic reaction"),
+   "altered_mental_status" = c("aloc/behavior changes"),
+   "asthma_or_wheezing" = c("other: wheezing"),
+   "bites_or_stings" = c("bite", "other: dog bite", "other: bug bites",
+                         "other: insect bite", "other: bug bite", 
+                         "other: bee sting", "other: insect bites"),
+   "burn" = c("burn"),
+   "cardiac" = c("chest pain/arrhythmia", "other: tachycardia", "other: palpitations",
+                 "other: brue", "other: bradycardia", "other: svt"),
+   "chest_pain" = c("other: rib pain", "other: breast pain", "other: chest pain"),
+   # "chronic_disease" = c(), # no HIV, 5 sickle, 3 cancer, 6 diabetes
+   "congestion" = c("congestion", "other: runny nose"),
+   "constipation" = c("constipation", "other: rectal pain", "no bowel movement",
+                      "other: dysuria"),
+   "cough" = c("cough"),
+   # "croup" = c(), # only 9 visits
+   "crying_or_colic" = c("crying excessively", "other: fussy", "other: fussiness",
+                         "other: increased fussiness", "other: irritability"),
+   "dental" = c("dental/mouth pain", "other: mouth sores", "other: jaw pain",
+                "other: mouth pain", "other: tooth pain", "other: mouth injury"),
+   "device_complication" = c("g/j tube problem", "cvc problem", "other: ng tube out",
+                             "other: ngt out", "other: vp shunt", "other: vps"),
+   "diarrhea" = c("diarrhea"),
+   "ear_complaint" = c("ear complaint"),
+   "epistaxis" = c("other: nose bleed", "other: nosebleed", "other: epistaxis",
+                   "other: nose bleeds", "other: nosebleeds", "other: bloody nose",
+                   "other: epitaxis"),
+   "extremity" = c("lower extremity pain/injury", "upper extremity pain/injury",
+                   "other: joint pain", "other: finger injury", "other: ingrown toe nail",
+                   "other: ingrown toenail", "other: hip pain", "other: shoulder pain",
+                   "other: leg pain", "other: finger pain", "other: toe pain"),
+   "eye_complaint" = c("eye complaint", "vision problem"),
+   "syncope" = c("syncopal episode", "other: near syncope", "other: syncope"),
+   "foreign_body" = c("foreign body in ear/nose", "foreign body ingestion"), 
+   "fever" = c("fever", "fever >5 days", "fever-immunocompromised"), 
+   "follow_up" = c("abnormal labs", "well child check", "abnormal imaging",
+                   "scan", "cast check", "surgical site problem",
+                   "other: suture removal",  "other: staple removal",
+                   "needs blood product/sedation/imaging", "other: wound check",
+                   "other: bili check", "other: stitch removal"),
+   "general" = c("pain crisis", "other: body aches", "other: fatigue",
+                 "other: weakness", "other: bodyaches", "other: pain",
+                 "other: lethargy", "other: chills", "other: numbness", 
+                 "other: lethargic", "fatigue", "other: hypothermia",
+                 "other: pale", "weakness", "other: body ache", 
+                 "other: body pain", "other: generalized weakness",
+                 "bleeding"), 
+   "gi_bleed" = c("other: blood in stool", "other: bloody stool",
+                  "other: bloody stools", "other: hematuria", "other: black stool"),
+   "gynecologic" = c("gu complaint", "other: mva", "other: vaginal bleeding",
+                     "other: vaginal pain"),
+   "head_or_neck" = c("closed head injury", "other: head injury", 
+                      "other: facial swelling", "other: facial injury",
+                      "other: nose pain", "other: nasal injury",
+                      "other: nose complaint", "other: neck swelling"),
+   "headache" = c("headache"),
+   "laceration" = c("laceration", "other: gsw"),
+   "lump_or_mass" = c("swelling/lesion"), 
+   "male_genital" = c("testicular complaint", "other: penile pain",
+                      "other: penile swelling", "other: penis pain"),
+   "mvc" = c("other: mvc", "other: peds vs auto", "other: auto vs peds"),
+   "neck_pain" = c("other: neck pain"),
+   "neurologic" = c("other: dizziness", "gait disturbance", "other: dizzy",
+                    "other: abnormal movements", "other: facial droop",
+                    "dizziness", "other: twitching", "other: spasms",
+                    "other: abnormal movement", "other: facial numbness",
+                    "other: facial drooping", "other: tremors"),
+   "poisoning" = c("substance ingestion", "other: ingestion"),
+   "poor_feeding" = c("decreased po's", "other: weight loss", "other: ftt",
+                      "weight loss", "other: poor weight gain", "other: decreased po",
+                      "other: difficulty swallowing", "other: lip swelling"),
+   #"pregnancy" = c(),
+   "primary_care" = c("needs medication/supplies"),
+   "psych" = c("si/hi/depression", "other: anxiety",
+               "other: panic attack", "other: anxiety attack"),
+   "rash" = c("rash", "other: diaper rash", "other: skin problem", 
+              "other: hives", "other: eczema", "other: itching"),
+   "other_respiratory" = c("breathing difficulty", "choking episode/color change",
+                           "increase in trach. secretions", "other: hypoxia",
+                           "other: sob"),
+   "seizure" = c("seizure"),
+   "sore_throat" = c("throat pain", "other: sore throat"),
+   "trauma" = c("back/neck pain", "other: fall", "other: nose injury",
+                "other: bruising", "other: back pain", "other: straddle injury",
+                "other: trauma", "other: abrasion"),
+   "urinary" = c("other: painful urination", "other: decreased uop"),
+   "vomiting" = c("vomiting", "other: nausea", "nausea")
+ )
   
-  #The presence of any of these tags defines a complaint
-  complaint_groups <- list()
-  for (complaint in names(perc_complaints)) {
-    complaint_name <- paste0("complaint_contains_", complaint)
-    tags <- perc_complaints[[complaint]]
-    column <- rep(0, nrow(data))
-    for (tag in tags) {
-      match <- grepl(paste0("\\b", tag, "\\b"), data$raw_reason_for_visit, ignore.case = TRUE)
-      column <- ifelse(match + column > 0, 1, 0)
-    }
-    complaint_groups[[complaint_name]] <- column
-  }
+ #The presence of any of these tags defines a complaint
+ complaint_groups <- list()
+ for (complaint in names(perc_complaints)) {
+   complaint_name <- paste0("complaint_contains_", complaint)
+   tags <- perc_complaints[[complaint]]
+   column <- rep(0, nrow(data))
+   for (tag in tags) {
+     match <- grepl(paste0("\\b", tag, "\\b"), data$raw_reason_for_visit, ignore.case = TRUE)
+     column <- ifelse(match + column > 0, 1, 0)
+   }
+   complaint_groups[[complaint_name]] <- column
+ }
 
-  assert(nrow(data)==length(unique(data$id_visit)))
-  data <- cbind(data, as.data.frame(complaint_groups))
+ assert(nrow(data)==length(unique(data$id_visit)))
+ data <- cbind(data, as.data.frame(complaint_groups))
 
-  assert(nrow(data)==length(unique(data$id_visit)))
+ assert(nrow(data)==length(unique(data$id_visit)))
 
-  write.csv(data, "intermediate-files/visits-with-chief-complaint.csv")
-  print("Saved chief complaint")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-chief-complaint.csv"))
+ print("Saved chief complaint")
   
-  # INSURANCE ------------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_visitinformation.primarypayer"] <- "raw_insurance"
-  group_insurance <- function(raw_insurance) {
-    case_when(
-      raw_insurance %in% c("MEDICAID OUT OF STATE-NOT FOR PAC", "MEDICAID/WELFARE", 
-                           "MEDICARE PART A", "MEDICARE PART B", "CHAMPUS") ~ "Public", 
-      raw_insurance %in% c("BLUE CROSS", "COMMERCIAL", "HMO", "OTHER") ~ "Private",
-      .default = "unknown"
-    )
-  }
-  data <- data %>% mutate(insurance= group_insurance(raw_insurance))
+ # INSURANCE ------------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_visitinformation.primarypayer"] <- "raw_insurance"
+ group_insurance <- function(raw_insurance) {
+   case_when(
+     raw_insurance %in% c("MEDICAID OUT OF STATE-NOT FOR PAC", "MEDICAID/WELFARE", 
+                          "MEDICARE PART A", "MEDICARE PART B", "CHAMPUS") ~ "Public", 
+     raw_insurance %in% c("BLUE CROSS", "COMMERCIAL", "HMO", "OTHER") ~ "Private",
+     .default = "unknown"
+   )
+ }
+ data <- data %>% mutate(insurance= group_insurance(raw_insurance))
   
-  # ARRIVAL MODE ---------------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_visitinformation.arrivalmode"] <- "raw_arrival_mode"
-  group_arrival_mode <- function(raw_arrival_mode) {
-    case_when(
-      raw_arrival_mode %in% c("Self transport") ~ "self",
-      str_detect(tolower(raw_arrival_mode), "bus|uber|taxi|walk") ~ "self",
-      raw_arrival_mode %in% c("Ambulance", "Helicopter") ~ "EMS",
-      str_detect(tolower(raw_arrival_mode), 
-                 "air|transfer|transport|altamed|amb|amr|ems|escort|fire|police|blue|lafd|lapd") ~ "EMS",
-      raw_arrival_mode %in% c("") ~ "unknown",
-      raw_arrival_mode %in% c("Task Duplication") ~ "task duplication",
-      .default = "other"
-    )
-  }
-  data <- data %>% mutate(arrival_mode = group_arrival_mode(raw_arrival_mode))
+ # ARRIVAL MODE ---------------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_visitinformation.arrivalmode"] <- "raw_arrival_mode"
+ group_arrival_mode <- function(raw_arrival_mode) {
+   case_when(
+     raw_arrival_mode %in% c("Self transport") ~ "self",
+     str_detect(tolower(raw_arrival_mode), "bus|uber|taxi|walk") ~ "self",
+     raw_arrival_mode %in% c("Ambulance", "Helicopter") ~ "EMS",
+     str_detect(tolower(raw_arrival_mode), 
+                "air|transfer|transport|altamed|amb|amr|ems|escort|fire|police|blue|lafd|lapd") ~ "EMS",
+     raw_arrival_mode %in% c("") ~ "unknown",
+     raw_arrival_mode %in% c("Task Duplication") ~ "task duplication",
+     .default = "other"
+   )
+ }
+ data <- data %>% mutate(arrival_mode = group_arrival_mode(raw_arrival_mode))
   
-  # PREFERRED LANGUAGE ---------------------------------------------------------
-  names(data)[names(data) == "pecarn_submit_visitinformation.preferredlanguage"] <- "raw_preferred_language"
-  group_preferred_language <- function(raw_preferred_language) {
-    case_when(
-      raw_preferred_language %in% c("English") ~ "English",
-      raw_preferred_language %in% c("Spanish") ~ "Spanish", 
-      raw_preferred_language %in% c("Mandarin") ~ "Mandarin", # 1159
-      raw_preferred_language %in% c("Russian") ~ "Russian",   # 1247
-      raw_preferred_language %in% c("Armenian (Eastern)") ~ "Armenian", # 2704
-      .default = "other_unknown" # only 657 unknown
-    )
-  }
-  data <- data %>% mutate(preferred_language = group_preferred_language(raw_preferred_language))
+ # PREFERRED LANGUAGE ---------------------------------------------------------
+ names(data)[names(data) == "pecarn_submit_visitinformation.preferredlanguage"] <- "raw_preferred_language"
+ group_preferred_language <- function(raw_preferred_language) {
+   case_when(
+     raw_preferred_language %in% c("English") ~ "English",
+     raw_preferred_language %in% c("Spanish") ~ "Spanish", 
+     raw_preferred_language %in% c("Mandarin") ~ "Mandarin", # 1159
+     raw_preferred_language %in% c("Russian") ~ "Russian",   # 1247
+     raw_preferred_language %in% c("Armenian (Eastern)") ~ "Armenian", # 2704
+     .default = "other_unknown" # only 657 unknown
+   )
+ }
+ data <- data %>% mutate(preferred_language = group_preferred_language(raw_preferred_language))
 
-  write.csv(data, "intermediate-files/visits-with-language.csv")
-  print("Saved language")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-language.csv"))
+ print("Saved language")
 
-  data <- read.csv("intermediate-files/visits-with-language.csv")
+ data <- read.csv(paste0(savepath,"intermediate-files/visits-with-language.csv"))
 
-  # CROWDEDNESS ----------------------------------------------------------------
-  data <- get_crowdedness(data)
+ # CROWDEDNESS ----------------------------------------------------------------
+ print("get crowdedness")
+ data <- get_crowdedness(data)
   
-  write.csv(data, "intermediate-files/visits-with-crowdedness.csv")
-  print("Saved crowdedness")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-crowdedness.csv"))
+ print("Saved crowdedness")
 
-  # WEIGHT (normalized by age) -------------------------------------------------
-  # Rename columns
-  names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.encntr_id"] <- "id_visit"
-  names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.weightkg"] <- "weightkg"
-  names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.date"] <- "date"
-  names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.time"] <- "time"
-  data_weight <- data_weight %>% mutate(datetime = ymd_hms(paste(date, time)))
-  # Normalize and group weights
-  data <- get_weight_normalize(data, data_weight)
-  assert(nrow(data)==length(unique(data$id_visit)))
+ # WEIGHT (normalized by age) -------------------------------------------------
+ # Rename columns
+ names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.encntr_id"] <- "id_visit"
+ names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.weightkg"] <- "weightkg"
+ names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.date"] <- "date"
+ names(data_weight)[names(data_weight) == "pecarn_submit_weightkg.time"] <- "time"
+ data_weight <- data_weight %>% mutate(datetime = ymd_hms(paste(date, time)))
+ # Normalize and group weights
+ data <- get_weight_normalize(data, data_weight)
+ assert(nrow(data)==length(unique(data$id_visit)))
 
-  write.csv(data, "intermediate-files/visits-with-weight.csv")
-  print("Saved weight")
+ write.csv(data, paste0(savepath,"intermediate-files/visits-with-weight.csv"))
+ print("Saved weight")
   
-  # LABS -----------------------------------------------------------------------
-  # Filter labs during ED stay only
-  data_lab_filtered <- data_lab %>%
-    mutate(
-      lab_order_datetime = paste(`pecarn_submit_lab.laborderdate`, 
-                                 `pecarn_submit_lab.labordertime`),
-      lab_order_datetime = ymd_hms(lab_order_datetime)
-    ) %>%
-    left_join(
-      data %>% dplyr::select(id_visit, arrival_datetime, disposition_datetime), 
-      by = c("pecarn_submit_lab.encntr_id" = "id_visit")
-    ) %>%
-    filter(
-      lab_order_datetime >= arrival_datetime &
-        lab_order_datetime <= disposition_datetime
-    )
-  # Count number of labs per visit
-  lab_counts <- data_lab_filtered %>% count(`pecarn_submit_lab.encntr_id`, name = "num_labs")
-  data <- data %>%
-    left_join(
-      lab_counts, by = c("id_visit" = "pecarn_submit_lab.encntr_id")
-    ) %>% 
-    mutate(num_labs = ifelse(is.na(num_labs), 0, num_labs))
-  data <- data %>%
-    mutate(any_labs = ifelse(num_labs > 0, 1, 0))
+ # LABS -----------------------------------------------------------------------
+ # Filter labs during ED stay only
+ data_lab_filtered <- data_lab %>%
+   mutate(
+     lab_order_datetime = paste(`pecarn_submit_lab.laborderdate`, 
+                                `pecarn_submit_lab.labordertime`),
+     lab_order_datetime = ymd_hms(lab_order_datetime)
+   ) %>%
+   left_join(
+     data %>% dplyr::select(id_visit, arrival_datetime, disposition_datetime), 
+     by = c("pecarn_submit_lab.encntr_id" = "id_visit")
+   ) %>%
+   filter(
+     lab_order_datetime >= arrival_datetime &
+       lab_order_datetime <= disposition_datetime
+   )
+ # Count number of labs per visit
+ lab_counts <- data_lab_filtered %>% count(`pecarn_submit_lab.encntr_id`, name = "num_labs")
+ data <- data %>%
+   left_join(
+     lab_counts, by = c("id_visit" = "pecarn_submit_lab.encntr_id")
+   ) %>% 
+   mutate(num_labs = ifelse(is.na(num_labs), 0, num_labs))
+ data <- data %>%
+   mutate(any_labs = ifelse(num_labs > 0, 1, 0))
 
-    assert(nrow(data)==length(unique(data$id_visit)))
-    write.csv(data, "intermediate-files/visits-with-labs.csv")
-    print("Saved labs")
+   assert(nrow(data)==length(unique(data$id_visit)))
+   write.csv(data, paste0(savepath,"intermediate-files/visits-with-labs.csv"))
+   print("Saved labs")
   
-  # MEDICATION -----------------------------------------------------------------
-  # Filter medication during ED stay only
-  data_med_filtered <- data_meds %>%
-    mutate(
-      med_order_datetime = ymd_hms(paste(`pecarn_submit_med_administration.medadministeredevent_date`,
-                                 `pecarn_submit_med_administration.medadministeredevent_time`)),
-    ) %>%
-    left_join(
-      data %>% dplyr::select(id_visit, arrival_datetime, disposition_datetime), 
-      by = c("pecarn_submit_med_administration.encntr_id" = "id_visit")
-    ) %>%
-    filter(
-      med_order_datetime >= arrival_datetime &
-        med_order_datetime <= disposition_datetime
-    )
-  # Count all meds and IV meds
-  med_counts <- data_med_filtered %>% 
-    count(`pecarn_submit_med_administration.encntr_id`, name = "num_meds")
-  IV_med_counts <- data_med_filtered %>%
-    filter(str_detect(tolower(`pecarn_submit_med_administration.medroute`), "iv|intravenous")) %>%
-    count(`pecarn_submit_med_administration.encntr_id`, name = "num_IV_meds")
-  data <- data %>%
-    left_join(
-      med_counts, by = c("id_visit" = "pecarn_submit_med_administration.encntr_id")
-    ) %>% 
-    mutate(num_meds = ifelse(is.na(num_meds), 0, num_meds))
-  data <- data %>%
-    left_join(
-      IV_med_counts, by = c("id_visit" = "pecarn_submit_med_administration.encntr_id")
-    ) %>% 
-    mutate(num_IV_meds = ifelse(is.na(num_IV_meds), 0, num_IV_meds))
-  data <- data %>%
-    mutate(
-      any_meds = ifelse(num_meds > 0, 1, 0),
-      any_IV_meds = ifelse(num_IV_meds > 0, 1, 0)
-    )
-    assert(nrow(data)==length(unique(data$id_visit)))
-    write.csv(data, "intermediate-files/visits-with-meds.csv")
-    print("Saved meds")
+ # MEDICATION -----------------------------------------------------------------
+ # Filter medication during ED stay only
+ data_med_filtered <- data_meds %>%
+   mutate(
+     med_order_datetime = ymd_hms(paste(`pecarn_submit_med_administration.medadministeredevent_date`,
+                                `pecarn_submit_med_administration.medadministeredevent_time`)),
+   ) %>%
+   left_join(
+     data %>% dplyr::select(id_visit, arrival_datetime, disposition_datetime), 
+     by = c("pecarn_submit_med_administration.encntr_id" = "id_visit")
+   ) %>%
+   filter(
+     med_order_datetime >= arrival_datetime &
+       med_order_datetime <= disposition_datetime
+   )
+ # Count all meds and IV meds
+ med_counts <- data_med_filtered %>% 
+   count(`pecarn_submit_med_administration.encntr_id`, name = "num_meds")
+ IV_med_counts <- data_med_filtered %>%
+   filter(str_detect(tolower(`pecarn_submit_med_administration.medroute`), "iv|intravenous")) %>%
+   count(`pecarn_submit_med_administration.encntr_id`, name = "num_IV_meds")
+ data <- data %>%
+   left_join(
+     med_counts, by = c("id_visit" = "pecarn_submit_med_administration.encntr_id")
+   ) %>% 
+   mutate(num_meds = ifelse(is.na(num_meds), 0, num_meds))
+ data <- data %>%
+   left_join(
+     IV_med_counts, by = c("id_visit" = "pecarn_submit_med_administration.encntr_id")
+   ) %>% 
+   mutate(num_IV_meds = ifelse(is.na(num_IV_meds), 0, num_IV_meds))
+ data <- data %>%
+   mutate(
+     any_meds = ifelse(num_meds > 0, 1, 0),
+     any_IV_meds = ifelse(num_IV_meds > 0, 1, 0)
+   )
+   assert(nrow(data)==length(unique(data$id_visit)))
+   write.csv(data, paste0(savepath,"intermediate-files/visits-with-meds.csv"))
+   print("Saved meds")
   
-# #   IMAGING --------------------------------------------------------------------
+#   IMAGING --------------------------------------------------------------------
 
-    data <- read.csv("intermediate-files/visits-with-meds.csv")
-
+  data <- read.csv(paste0(savepath,"intermediate-files/visits-with-meds.csv"))
   imaging_counts <- data_imaging %>% count(pecarn_submit_patientidentifier_demographics.encntr_id_hashed, name = "num_imaging")
 
   data <- data %>%
@@ -995,7 +1011,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
    )
 
    assert(nrow(data)==length(unique(data$id_visit)))
-    write.csv(data, "intermediate-files/visits-with-imaging.csv")
+    write.csv(data, paste0(savepath,"intermediate-files/visits-with-imaging.csv"))
     print("Saved imaging")
   
   # DIAGNOSES ------------------------------------------------------------------
@@ -1005,10 +1021,10 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
     left_join(diagnoses_indicators, by = c("id_visit" = "encounter_id"))
 
    assert(nrow(data)==length(unique(data$id_visit)))
-   write.csv(data, "intermediate-files/visits-with-diagnoses.csv")
+   write.csv(data, paste0(savepath,"intermediate-files/visits-with-diagnoses.csv"))
    print("Saved diagnoses")
-   data <- read.csv("intermediate-files/visits-with-diagnoses.csv")
-  
+   data <- read.csv(paste0(savepath,"intermediate-files/visits-with-diagnoses.csv"))  
+
   # VITAL SIGNS ----------------------------------------------------------------
   # Get triage vital signs time per visit
   triage_vitals_times <- get_vital_signs_triage_time(data_RR, data_HR, data_So2, data_temp, data_blood_pressure)
@@ -1016,7 +1032,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
     left_join(triage_vitals_times, by = c("id_visit" = "encounter_id"))
 
    assert(nrow(data)==length(unique(data$id_visit)))
-   write.csv(data, "intermediate-files/visits-with-triage-vital-signs.csv")
+   write.csv(data, paste0(savepath,"intermediate-files/visits-with-triage-vital-signs.csv"))
    print("Saved triage-vital-signs")
   
   # Create table with Triage vital signs
@@ -1032,7 +1048,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
   table_all_vitals <- pain_results$all_vitals_with_pain
 
   assert(nrow(data)==length(unique(data$id_visit)))
-  write.csv(data, "intermediate-files/visits-with-pain.csv")
+  write.csv(data, paste0(savepath,"intermediate-files/visits-with-pain.csv"))
   print("Saved pain")
   
   # PRIOR VISITS ---------------------------------------------------------------
@@ -1040,11 +1056,10 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
 
 
   assert(nrow(data)==length(unique(data$id_visit)))
-  write.csv(data, "intermediate-files/visits-with-prior-visits.csv")
+  write.csv(data, paste0(savepath,"intermediate-files/visits-with-prior-visits.csv"))
   print("Saved prior visits")
   
   # Keep columns of interest only ----------------------------------------------
-
   data <- data[, c("id_visit", "id_patient", "disposition", "age", "age_group", 
                    "sex", "race_ethnicity", "zip", "state", "miles_travelled", 
                    "SDI_score", "triage_acuity", "insurance",
@@ -1056,7 +1071,7 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
                    "any_IV_meds", "triage_vitals_time", 
                    colnames(data)[startsWith(colnames(data), "complaint") | startsWith(colnames(data), "diagnosis")],
                    "crowdedness", "pseudo_nedocs", "num_previous_admissions", "num_previous_visits_without_admission",
-                   "raw_complaint", "raw_reason_for_visit")]
+                   "raw_complaint", "raw_reason_for_visit", "ed_los")]
   
   return(list(
     data = data,
@@ -1064,6 +1079,8 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
     table_all_vitals = table_all_vitals
   ))
 }
+
+## ----------------------------------------
 results <- get_demographics(data, data_age, data_visit, data_weight, data_disposition,
                             data_lab, data_meds, data_procedures, data_imaging,
                             data_diagnoses, data_painscore, data_RR, data_HR,
@@ -1077,14 +1094,16 @@ table_all_vitals <- results$table_all_vitals
 
 # Save first 2 tables as CSV files
 #write.csv(data_with_triage_vitals, file.path("preprocessed_data_with_triage_vitals.csv"), row.names = FALSE)
-write.csv(data, file.path("preprocessed_data.csv"), row.names = FALSE)
+write.csv(data, paste0(savepath,"preprocessed_data.csv"), row.names = FALSE)
+print("Saved preprocessed_data.csv")
 #write.csv(table_triage_vitals_clean, file.path("triage_vitals.csv"), row.names = FALSE)
-write.csv(table_all_vitals, file.path("all_vitals.csv"), row.names = FALSE)
+write.csv(table_all_vitals, paste0(savepath,"all_vitals.csv"), row.names = FALSE)
+print("Saved all_vitals.csv")
 
 
-#Attach triage vitals.
-visits <- as.data.frame(fread(file.path("preprocessed_data.csv")))
-vitals <- as.data.frame(fread(file.path("all_vitals.csv")))
+##Attach triage vitals.
+visits <- as.data.frame(fread(file.path(paste0(savepath,"preprocessed_data.csv"))))
+vitals <- as.data.frame(fread(file.path(paste0(savepath,"all_vitals.csv"))))
 
 
 
@@ -1102,5 +1121,6 @@ visits <- visits %>% left_join(triage_vitals, by="id_visit")
 assert(nrow(visits)==length(unique(visits$id_visit)))
 
 #Save visits with triage vitals.
-write.csv(visits, file.path("preprocessed_data_with_triage_vitals.csv"), row.names=FALSE)
-
+savename <- paste0(savepath,"preprocessed_data_with_triage_vitals.csv")
+print(paste0("writing ",savename))
+write.csv(visits, savename, row.names=FALSE)
