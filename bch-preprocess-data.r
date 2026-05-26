@@ -32,7 +32,7 @@ library(ggridges)
 library(comorbidity)
 
 #basepath <- "/Volumes/chip-lacava/Groups/BCH-ED/"
-basepath <- "/rc-fs/chip-lacava/Groups/BCH-ED/"
+basepath <- "/Volumes/chip-lacava/Groups/BCH-ED/"
 loadpath <- paste0(basepath,"raw-data/")
 #savepath <- paste0(basepath,"reprocessing/")
 #savepath <- paste0(basepath,"reprocessing-bill/")
@@ -224,7 +224,7 @@ visits <- visits %>% left_join(states, by="zipcode") %>%
             !is.na(home_state) ~ "out-of-state",
             .default = NA
         )
-    ) %>% select(-home_state)
+    ) 
 
 
 
@@ -474,7 +474,7 @@ print(head(visits))
 cols_to_normalise <- colnames(visits)[grepl("_hr|_rr", colnames(visits))]
 
 #Copy across vitals 'raw'.
-for (col in colnames(visits)[grepl("_hr|_rr|_sbp|_dbp|_sp_o2", colnames(visits))]) {
+for (col in colnames(visits)[grepl("_hr|_rr|_sbp|_dbp|_sp_o2|_pain", colnames(visits))]) {
     visits[[paste0("raw_", col)]] <- visits[[col]]
 }
 
