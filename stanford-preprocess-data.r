@@ -33,8 +33,8 @@ library(comorbidity)
 
 #Preprocess the Stanford data.
 
-setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mc-med/disparities")
-
+setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mc-med/disparities/")
+savedir <- "epi-and-prediction/"
 
 #Load raw file.
 visits <- read.csv("visits.csv")
@@ -185,7 +185,7 @@ visits <- visits %>% select(-ED_dispo)
 
 all_complaints <- as.data.frame(table(unlist(str_split(visits$CC, ",")))) %>% 
     rename(ComplaintPhrase=Var1) %>% arrange(desc(Freq))
-write.csv(all_complaints, "complaint-phrases-by-freq.csv")
+write.csv(all_complaints, paste0(savedir, "complaint-phrases-by-freq.csv"))
 
 
 #Create a complaint dictionary based on Arya 2013. All their major complaints are treated as own categories;
@@ -256,8 +256,8 @@ for (complaint in names(complaint_dict)) {
 }
 
 
-write.csv(visits, "intermediate-files/after-chief-complaints.csv")
-visits <- read.csv("intermediate-files/after-chief-complaints.csv")
+write.csv(visits, paste0(savedir,"intermediate-files/after-chief-complaints.csv"))
+visits <- read.csv(paste0(savedir, "intermediate-files/after-chief-complaints.csv"))
 
 #Now deal with history of previous visits.
 #Extract previous visits/admissions within 30 days; discard everything else.
@@ -312,8 +312,8 @@ visits <- visits %>%
          DC_dispo))
 
 
-write.csv(visits, "intermediate-files/after-visit-history.csv")
-visits <- read.csv("intermediate-files/after-visit-history.csv")
+write.csv(visits, paste0(savedir, "intermediate-files/after-visit-history.csv"))
+visits <- read.csv(paste0(savedir, "intermediate-files/after-visit-history.csv"))
 
 #Get insurance status: there are 3 classes, Medicaid, Medicare and blank, which is assumed to be commercial (72k visits.)
 visits$Payor_class <- ifelse(visits$Payor_class=="", "Other", visits$Payor_class)
@@ -385,8 +385,8 @@ for (col in c(paste0("pre_diagnosis_", comorbs), paste0("current_diagnosis_", co
     visits[[col]] <- ifelse(is.na(visits[[col]]), 0, visits[[col]])
 }
 
-write.csv(visits, "intermediate-files/after-comorbidity-scores.csv")
-visits <- read.csv("intermediate-files/after-comorbidity-scores.csv")
+write.csv(visits, paste0(savedir, "intermediate-files/after-comorbidity-scores.csv"))
+visits <- read.csv(paste0(savedir, "intermediate-files/after-comorbidity-scores.csv"))
 
 
 #Because only the seasonality of the patient's first visit is preserved, and 
@@ -453,29 +453,11 @@ print(paste("After filtering decision to departure times, we have", nrow(visits)
 
 #Save a table linking raw arrival/departure times to visits.
 visits_to_arrival_times <- visits %>% select(CSN, Arrival_time, Departure_time)
-write.csv(visits_to_arrival_times, "arrival-timestamps-per-visit.csv")
+write.csv(visits_to_arrival_times, paste0(savedir, "arrival-timestamps-per-visit.csv"))
 
 #Now finally filter out all the unnecessary columns.
 
 visits <- visits %>% select(-c(X.1, X.2, Visit_no, Visits, MRN, ED_LOS, Admit_time, Arrival_time, Roomed_time, Dispo_time, Departure_time)) %>% clean_names()
-write.csv(visits, "preprocessed-visits.csv")
+write.csv(visits, paste0(savedir, "preprocessed-visits.csv"))
 
 
-
-#For Blanca (triage analysis): drop processed triage vitals and attach raw complaint.
-
-raw_visits <- read.csv("visits.csv") %>% 
-    select(CSN, Triage_SBP, Triage_DBP, Triage_HR, Triage_RR, Triage_Temp, Triage_SpO2, CC) %>%
-    rename(raw_triage_sbp=Triage_SBP,
-        raw_triage_dbp=Triage_DBP,
-        raw_triage_hr=Triage_HR,
-        raw_triage_rr=Triage_RR,
-        raw_triage_temp=Triage_Temp,
-        raw_triage_ox_sat=Triage_SpO2,
-        raw_chief_complaint=CC) %>% clean_names()
-
-
-# %>% select(-c(all_of(c(colnames(visits)[startsWith(colnames(visits), "complaint_contains_")])))) 
-visits <- visits %>% inner_join(raw_visits, by="csn")
-
-write.csv(visits, "preprocessed-visits-for-blanca.csv")
