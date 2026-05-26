@@ -34,8 +34,9 @@ library(comorbidity)
 #basepath <- "/Volumes/chip-lacava/Groups/BCH-ED/"
 basepath <- "/rc-fs/chip-lacava/Groups/BCH-ED/"
 loadpath <- paste0(basepath,"raw-data/")
-savepath <- paste0(basepath,"reprocessing/")
+#savepath <- paste0(basepath,"reprocessing/")
 #savepath <- paste0(basepath,"reprocessing-bill/")
+savepath <- paste0(basepath, "epi-and-prediction/")
 
 
 
