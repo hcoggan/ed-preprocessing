@@ -34,6 +34,8 @@ library(comorbidity)
 
 #setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
 setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+savedir <- "epi-and-prediction/"
+
 
 # pyxis <- read.csv("pyxis.csv") %>% group_by(name) %>%
 #     summarise(count=n()) %>% arrange(desc(count))
@@ -175,8 +177,8 @@ visits <- visits %>%
 visits <- visits %>% select(csn, mrn, arrival_time, sex, race, age_group, ed_arrival_mode,
     year_group, is_admitted, ed_los, num_previous_admissions, num_previous_visits_without_admission)
 
-write.csv(visits, "intermediate-files/visits-after-edstays-and-patients.csv")
-visits <- read.csv("intermediate-files/visits-after-edstays-and-patients.csv")
+write.csv(visits, paste0(savedir, "intermediate-files/visits-after-edstays-and-patients.csv"))
+visits <- read.csv(paste0(savedir, "intermediate-files/visits-after-edstays-and-patients.csv"))
 
 #Load the table containing triage vitals, chief complaint and acuity.
 triage <- read.csv("triage.csv") %>% rename(csn=stay_id, Triage_Temp=temperature,
@@ -195,7 +197,7 @@ print(paste("After linking complaint and triage acuity, we have", length(unique(
 #First, look at the distribution of complaints, breaking complaints out by frequency
 all_complaints <- as.data.frame(table(sub("^ ", "", unlist(str_split(visits$CC, ","))))) %>% #remove leading spaces
     rename(ComplaintPhrase=Var1) %>% arrange(desc(Freq))
-write.csv(all_complaints, "complaint-phrases-by-freq.csv")
+write.csv(all_complaints, paste0(savedir,"complaint-phrases-by-freq.csv"))
 
 
 #Categorise them, using the Stanford database and adding common categories not present in Stanford data (at least not in the top ~200 complaints.)
@@ -348,8 +350,8 @@ visits$Triage_BP <- case_when(
 
 
 #Save visits.
-write.csv(visits, "intermediate-files/visits-after-triage-information.csv")
-visits <- read.csv("intermediate-files/visits-after-triage-information.csv")
+write.csv(visits, paste0(savedir, "intermediate-files/visits-after-triage-information.csv"))
+visits <- read.csv(paste0(savedir, "intermediate-files/visits-after-triage-information.csv"))
 
 #Now link diagnoses as a result of the visit.
 diagnoses <- read.csv("diagnosis.csv") %>% rename(mrn=subject_id, csn=stay_id)
@@ -395,8 +397,8 @@ print(paste("After linking diagnoses from ED stay, we have", length(unique(visit
   "visits from", length(unique(visits$mrn)), "unique patients."))
 
 #Save visits.
-write.csv(visits, "intermediate-files/visits-after-diagnoses.csv")
-visits <- as.data.frame(fread("intermediate-files/visits-after-diagnoses.csv"))
+write.csv(visits, paste0(savedir, "intermediate-files/visits-after-diagnoses.csv"))
+visits <- as.data.frame(fread(paste0(savedir, "intermediate-files/visits-after-diagnoses.csv")))
 
 #Now load in the medication each patient was taking prior to their ED stay.
 medrecon <- as.data.frame(fread("medrecon.csv")) %>% rename(mrn=subject_id, csn=stay_id)
@@ -447,10 +449,10 @@ drug_codes <- drug_codes %>%
 medrecon$ndc <- as.character(medrecon$ndc)
 medrecon <- medrecon %>% inner_join(drug_codes, by="ndc", relationship="many-to-many") #As a single drug may have many ATC classifications
  
-write.csv(medrecon, "intermediate-files/medrecon-with-atc.csv")
+write.csv(medrecon, paste0(savedir, "intermediate-files/medrecon-with-atc.csv"))
 
 #Load in medications with their linked ATC descriptions. 
-medrecon <- as.data.frame(fread("intermediate-files/medrecon-with-atc.csv"))
+medrecon <- as.data.frame(fread(paste0(savedir, "intermediate-files/medrecon-with-atc.csv")))
 
 #How many distinct therapeutic categories do we have?
 print(paste("We have", length(unique(medrecon$atc_name)), "unique ATC descriptions."))
@@ -480,12 +482,12 @@ for (col in medication_names) {
 visits <- visits %>% select(-c(X.1, V1)) %>% clean_names()
 
 #Save visits
-write.csv(visits, "preprocessed-visits.csv")
+write.csv(visits, paste0(savedir, "preprocessed-visits.csv"))
 
  
 #Link VITAL SIGNS
-visits <- read.csv("preprocessed-visits.csv")
-vitals <- read.csv("vitalsign.csv") %>% rename(mrn=subject_id, csn=stay_id)
+visits <- read.csv(paste0(savedir, "preprocessed-visits.csv"))
+vitals <- read.csv(paste0(savedir, "vitalsign.csv")) %>% rename(mrn=subject_id, csn=stay_id)
 
 #For some reason the system struggles to read arrival times back out, so link to the original dataframe for these.
 arrival_times <- read.csv("edstays.csv") %>% 
@@ -536,5 +538,5 @@ triage_vitals <- triage_vitals %>%
 vitals <- rbind(vitals, triage_vitals)
 
 
-write.csv(vitals, "intermediate-files/preprocessed-vitals.csv")
+write.csv(vitals, paste0(savedir, "intermediate-files/preprocessed-vitals.csv"))
 
