@@ -22,8 +22,8 @@ plan(multicore, workers = 64)  # or set a number, e.g. workers = 4
 basepath <- "/rc-fs/chip-lacava/Groups/CHLA-ED/"
 loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
 #savepath <- paste0(basepath,"reprocessing/")
-savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")
-
+#savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")
+savepath <- paste0(basepath, "epi-and-prediction/")
 
 
 # DEFINE FUNCTIONS -------------------------------------------------------------
