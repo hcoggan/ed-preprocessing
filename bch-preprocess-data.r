@@ -31,9 +31,12 @@ library(yardstick)
 library(ggridges)
 library(comorbidity)
 
-setwd("/Volumes/chip-lacava/Groups/BCH-ED/")
-loadpath <- "raw-data/"
-savepath <- "reprocessing/"
+#basepath <- "/Volumes/chip-lacava/Groups/BCH-ED/"
+basepath <- "/Volumes/chip-lacava/Groups/BCH-ED/"
+loadpath <- paste0(basepath,"raw-data/")
+#savepath <- paste0(basepath,"reprocessing/")
+#savepath <- paste0(basepath,"reprocessing-bill/")
+savepath <- paste0(basepath, "epi-and-prediction/")
 
 
 
@@ -163,7 +166,7 @@ visits <- visits %>% filter(sex %in% c("M", "F"))
 
 race_by_ethn <- visits %>% group_by(ethnicity, race) %>% summarise(num_visits=n())
 write.csv(race_by_ethn, paste0(savepath, "race-ethnicity.csv"))
-assert(1==0)
+#assert(1==0)
 
 print(paste("After filtering those without a legible sex, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
@@ -177,7 +180,10 @@ visits$race <- case_when(
         ((visits$race=="Unknown" | visits$race == "Another Race, non-Hispanic") 
          & visits$ethnicity=="Black") ~ "Non-Hispanic Black", #technically 'unknown' is not 'non-Hispanic' so those 107 Unknown/Black visits could all be Hispanic, but this is unlikely; we assume that everyone who has not
                     #declared themselves to be Hispanic is not Hispanic.
+    # WGL: this line separates out White Hispanics as separate category (HC: using)
     visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic White",           
+    # WGL: this line treats White Hispanics as part of the overall Hispanics group
+    # visits$race == "White, non-Hispanic" &  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic",           
     visits$race == "Hispanic" |  visits$ethnicity=="Hispanic or Latino" ~ "Hispanic", 
     visits$race == "Another Race, non-Hispanic" | visits$race == "Multiracial, non-Hispanic" ~ "Other",
     visits$race == "White, non-Hispanic" ~ "Non-Hispanic White",
@@ -218,7 +224,7 @@ visits <- visits %>% left_join(states, by="zipcode") %>%
             !is.na(home_state) ~ "out-of-state",
             .default = NA
         )
-    ) %>% select(-home_state)
+    ) 
 
 
 
@@ -368,7 +374,7 @@ scores <- as.data.frame(fread(paste0(loadpath, "LaCava_Scores_May7.csv"))) %>%
 
 #Then correct names of each vitals and record their timestamps within a visit.
 vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/combined-vitals.csv"))) %>%
-    filter(!(measure %in% c("MEAN ARTERIAL PRESSURE (DEVICE)", "DIASTOLIC BLOOD PRESSURE"))) %>% #Filter out MAP and DBP, which we don't need.
+    filter(!(measure %in% c("MEAN ARTERIAL PRESSURE (DEVICE)"))) %>% #Filter out MAP, which we don't need.
     mutate(upper_measure = toupper(measure), #Rename all vitals.
         converted_measure = case_when(
             upper_measure == "RESPIRATORY RATE" ~ "rr",
@@ -399,14 +405,11 @@ visits <- as.data.frame(fread(paste0(savepath, "intermediate-files/visits-with-a
 print(paste("Before linking weight and vitals, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 
 
-
 #Normalise triage and overall vitals SEPARATELY (in line with CHLA).
 vitals <- as.data.frame(fread(paste0(savepath, "intermediate-files/vitals-with-age-and-pain.csv")))
 
 
-
-
-vitals_to_take <- c("hr", "rr", "sbp", "pain",  "sp_o2") #EXCLUDE TEMP
+vitals_to_take <- c("hr", "rr", "sbp", "dbp", "pain", "sp_o2") #EXCLUDE TEMP
 vitals_to_normalise <- c("hr", "rr") 
 
 #Filter the values we want and convert them to numeric form.
@@ -414,18 +417,6 @@ vitals_across_stay <- vitals %>%
     filter(measure %in% vitals_to_take) 
 vitals_across_stay$value <- as.numeric(vitals_across_stay$value)
 
-
-
-
-#Transform BP reading to 'distance from PALS criteria'.
-sbp_readings <- which(vitals_across_stay$measure=="sbp")
-sbp <- vitals_across_stay$value[sbp_readings]
-days <- vitals_across_stay$age_in_days[sbp_readings]
-
-vitals_across_stay$value[sbp_readings] <- ifelse(days <= 28 & sbp < 60, pmax(60-sbp, 0) , ifelse(
-    days > 28 & 365 & sbp < 70, pmax(70-sbp, 0), ifelse(
-    days > 365 & days < 365.25*10 & sbp < (70 + 2*days/(365.25)), pmax((70 + 2*days/(365.25))-sbp, 0), ifelse( 
-    days >= 365.25*10 & sbp < 90, pmax(90-sbp, 0), 0))))
 
 # #Transform temperature reading to 'positive distance from 38C'.
 # temperature_readings <- which(vitals_across_stay$measure=="temp")
@@ -482,8 +473,8 @@ print(head(visits))
 #Normalise HR and RR by age group.
 cols_to_normalise <- colnames(visits)[grepl("_hr|_rr", colnames(visits))]
 
-#Copy across these 'raw'.
-for (col in cols_to_normalise) {
+#Copy across vitals 'raw'.
+for (col in colnames(visits)[grepl("_hr|_rr|_sbp|_dbp|_sp_o2|_pain", colnames(visits))]) {
     visits[[paste0("raw_", col)]] <- visits[[col]]
 }
 
@@ -498,8 +489,19 @@ for (group in unique(visits$age_group)) {
     }
 }
 
-#Mark unknown values. (At this point pain is numeric.)
-all_vitals <- colnames(visits)[grepl("overall|triage", colnames(visits))]
+#Transform BP reading to 'distance from PALS criteria'.
+sbp_readings <- colnames(visits)[grepl("sbp", colnames(visits))]
+days <- visits$age_in_days
+
+for (col in sbp_readings) {
+    visits[[col]] <- ifelse(days <= 28 & visits[[col]] < 60, pmax(60-visits[[col]], 0) , ifelse(
+        days > 28 & 365 & visits[[col]] < 70, pmax(70-visits[[col]], 0), ifelse(
+        days > 365 & days < 365.25*10 & visits[[col]] < (70 + 2*days/(365.25)), pmax((70 + 2*days/(365.25))-visits[[col]], 0), ifelse( 
+        days >= 365.25*10 & visits[[col]] < 90, pmax(90-visits[[col]], 0), 0))))
+    }
+
+#Mark unknown values (except for pain, categorised separately).
+all_vitals <- colnames(visits)[grepl("overall|triage", colnames(visits)) & !grepl("pain", colnames(visits))]
 
 for (col in all_vitals) {
     visits[[paste0(col, "_unknown")]] <- 0
@@ -522,6 +524,7 @@ for (col in pain_cols) {
         visits[[col]]<4 ~ "mild",
         visits[[col]]<7 ~ "moderate",
         visits[[col]]<=10 ~ "severe",
+        .default = "unknown"
     )
 }
 
