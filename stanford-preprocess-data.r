@@ -36,7 +36,6 @@ library(comorbidity)
 setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mc-med/disparities")
 
 
-
 #Load raw file.
 visits <- read.csv("visits.csv")
 
@@ -87,6 +86,7 @@ visits$Race <- case_when(
 # assume Asian is also non-Hispanic Asian
 
 visits$Race <- case_when(
+    (visits$Ethnicity=="Hispanic/Latino") & (visits$Race=="White")  ~ "Hispanic White",
     visits$Ethnicity=="Hispanic/Latino" ~ "Hispanic",
     (!(visits$Ethnicity=="Hispanic/Latino")) & (visits$Race=="Black") ~ "Non-Hispanic Black",
     (!(visits$Ethnicity=="Hispanic/Latino")) & (visits$Race=="White") ~ "Non-Hispanic White",
