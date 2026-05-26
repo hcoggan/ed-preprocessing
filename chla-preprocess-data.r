@@ -658,7 +658,8 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
      race_group_column == "other" & ethnicity_column == "Non-Hispanic" ~ "other",
      # WGL: make hispanic thresholded (separate hispanic white group)
      # WGL: comment out to make hispanic include white patients
-    #  race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
+     # HC: in this version, H does not include HW
+     race_group_column %in% c("white") & ethnicity_column == "Hispanic" ~ "hispanic_white",
      race_group_column == "white" & ethnicity_column == "Non-Hispanic" ~ "non_hispanic_white",
      .default = "unknown"
    )
