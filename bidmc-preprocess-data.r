@@ -487,7 +487,7 @@ write.csv(visits, paste0(savedir, "preprocessed-visits.csv"))
  
 #Link VITAL SIGNS
 visits <- read.csv(paste0(savedir, "preprocessed-visits.csv"))
-vitals <- read.csv(paste0(savedir, "vitalsign.csv")) %>% rename(mrn=subject_id, csn=stay_id)
+vitals <- read.csv("vitalsign.csv") %>% rename(mrn=subject_id, csn=stay_id)
 
 #For some reason the system struggles to read arrival times back out, so link to the original dataframe for these.
 arrival_times <- read.csv("edstays.csv") %>% 
