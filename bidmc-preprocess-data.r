@@ -174,7 +174,7 @@ visits <- visits %>%
 
 
 #Discard unnecessary columns.
-visits <- visits %>% select(csn, mrn, arrival_time, sex, race, age_group, ed_arrival_mode,
+visits <- visits %>% select(csn, mrn, arrival_time, sex, race, age, age_group, ed_arrival_mode,
     year_group, is_admitted, ed_los, num_previous_admissions, num_previous_visits_without_admission)
 
 write.csv(visits, paste0(savedir, "intermediate-files/visits-after-edstays-and-patients.csv"))
@@ -294,6 +294,10 @@ for (complaint in names(complaint_dict)) {
     visits[[complaint_name]] <- purrr::map_vec(split_complaints, function(string) ifelse(any(tags %in% string), 1, 0), .progress=TRUE)
 }
 
+#Now save this part.
+write.csv(visits, paste0(savedir, "intermediate-files/visits-with-raw-triage-vitals-and-age.csv"))
+visits <- visits %>% select(-age)
+                                               
 
 #Categorise triage vitals.
 
