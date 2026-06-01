@@ -490,7 +490,7 @@ for (group in unique(visits$age_group)) {
 }
 
 #Transform BP reading to 'distance from PALS criteria'.
-sbp_readings <- colnames(visits)[grepl("sbp", colnames(visits))]
+sbp_readings <- colnames(visits)[grepl("sbp", colnames(visits)) & !grepl("raw", colnames(visits))]
 days <- visits$age_in_days
 
 for (col in sbp_readings) {
@@ -517,7 +517,7 @@ for (col in all_vitals) {
 
 
 #Finally, categorise pain levels (this is constructed of numeric values so no default is required, and indeed this runs without error.)
-pain_cols <-  colnames(visits)[grepl("pain", colnames(visits)) & !grepl("unknown", colnames(visits))] 
+pain_cols <-  colnames(visits)[grepl("pain", colnames(visits)) & !grepl("unknown", colnames(visits)) & !grepl("raw", colnames(visits))] 
 for (col in pain_cols) {
     visits[[col]] <- case_when(
         visits[[col]]==0 ~ "none",
