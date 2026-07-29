@@ -327,7 +327,7 @@ visits <- visits %>% mutate(
         month_of_arrival %in% c(6, 7, 8) ~ "summer",
         month_of_arrival %in% c(9, 10, 11) ~ "autumn"
     ),
-    is_weekend = ifelse(day_of_week_of_arrival==6 | day_of_week_of_arrival==7, 1, 0),
+    is_weekend = ifelse(day_of_week_of_arrival==6 | day_of_week_of_arrival==7, 1, 0), #Sunday is 6, Saturday is 7
     time_of_day = case_when(
         hour_of_arrival < 6 ~ "small hours", #00:00 to 05:59
         hour_of_arrival < 12 ~ "morning", #06:00 to 11:59
@@ -495,7 +495,7 @@ days <- visits$age_in_days
 
 for (col in sbp_readings) {
     visits[[col]] <- ifelse(days <= 28 & visits[[col]] < 60, pmax(60-visits[[col]], 0) , ifelse(
-        days > 28 & 365 & visits[[col]] < 70, pmax(70-visits[[col]], 0), ifelse(
+        days > 28 & days <= 365 & visits[[col]] < 70, pmax(70-visits[[col]], 0), ifelse(
         days > 365 & days < 365.25*10 & visits[[col]] < (70 + 2*days/(365.25)), pmax((70 + 2*days/(365.25))-visits[[col]], 0), ifelse( 
         days >= 365.25*10 & visits[[col]] < 90, pmax(90-visits[[col]], 0), 0))))
     }
@@ -510,7 +510,7 @@ for (col in all_vitals) {
     #Just replace with the age-specific mean 
     for (group in unique(visits$age_group)) {
         idx <- which(visits$age_group==group)
-        mean <- mean(visits[[col]], na.rm=TRUE)
+        mean <- mean(visits[[col]][idx], na.rm=TRUE) #Actually get age-specific mean.
         visits[[col]][intersect(idx, idx_to_replace)] <- mean
     }
 }
