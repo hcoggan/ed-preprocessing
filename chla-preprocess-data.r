@@ -15,11 +15,11 @@ library(data.table)
 
 #library(parallel)
 ##plan(multisession, workers = parallel::detectCores())  
-plan(multicore, workers = 64)  # or set a number, e.g. workers = 4
+plan(multicore, workers = 4)  # or set a number, e.g. workers = 4
 
 
 ## Working directory and paths
-basepath <- "/rc-fs/chip-lacava/Groups/CHLA-ED/"
+basepath <- "/Volumes/chip-lacava/Groups/CHLA-ED/"
 loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
 #savepath <- paste0(basepath,"reprocessing/")
 #savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")
@@ -404,12 +404,11 @@ get_temporal_variables <- function(data) {
       ),
      
       arrival_day_type = case_when(
-        wday(arrival_datetime) %in% c(6, 7) ~ "Weekend",
-        wday(arrival_datetime) %in% c(1, 2, 3, 4, 5) ~ "Weekday",
+        wday(arrival_datetime) %in% c(1, 7) ~ "Weekend",
+        wday(arrival_datetime) %in% c(2, 3, 4, 5, 6) ~ "Weekday",
         TRUE ~ NA_character_
       ),
      
-      # Create 6-hour time blocks
       arrival_time_block = case_when(
         hour(arrival_datetime) %in% 0:5 ~ "00:00-05:59",
         hour(arrival_datetime) %in% 6:11 ~ "06:00-11:59",
@@ -925,8 +924,12 @@ get_demographics <- function(data, data_age, data_visit, data_weight, data_dispo
 
  write.csv(data, paste0(savepath,"intermediate-files/visits-with-weight.csv"))
  print("Saved weight")
+
   
  # LABS -----------------------------------------------------------------------
+
+ data <- read.csv(paste0(savepath,"intermediate-files/visits-with-weight.csv"))
+
  # Filter labs during ED stay only
  data_lab_filtered <- data_lab %>%
    mutate(
