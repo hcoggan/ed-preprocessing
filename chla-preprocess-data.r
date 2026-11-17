@@ -19,7 +19,7 @@ plan(multicore, workers = 4)  # or set a number, e.g. workers = 4
 
 
 ## Working directory and paths
-basepath <- "/Volumes/chip-lacava/Groups/CHLA-ED/"
+basepath <- "/Users/helenacoggan/mnt/Groups/CHLA-ED/"
 loadpath <- paste0(basepath,"raw-data/2025-07-14/De-identified dataset/")
 #savepath <- paste0(basepath,"reprocessing/")
 #savepath <- paste0(basepath,"preprocessed-bill_2026-05-11/")

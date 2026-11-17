@@ -33,7 +33,7 @@ library(comorbidity)
 #Preprocess the BIDMC data.
 
 #setwd("/Volumes/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
-setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
+setwd("/Users/helenacoggan/mnt/Public/physionet.org/files/mimic-iv-ed/2.2/disparities")
 savedir <- "epi-and-prediction/"
 
 

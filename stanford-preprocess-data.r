@@ -33,7 +33,7 @@ library(comorbidity)
 
 #Preprocess the Stanford data.
 
-setwd("/rc-fs/chip-lacava/Public/physionet.org/files/mc-med/disparities/")
+setwd("/Users/helenacoggan/mnt/physionet.org/files/mc-med/disparities/")
 savedir <- "epi-and-prediction/"
 
 #Load raw file.

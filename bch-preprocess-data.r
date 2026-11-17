@@ -139,6 +139,8 @@ visits <- visits %>% filter(disposition %in% c("Admit", "Discharge"))
 print(paste("After filtering those not admitted or discharged, we have", nrow(visits), "visits from", length(unique(visits$mrn)), "unique patients."))
 write.csv(visits, paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv"))
 
+assert(1==0)
+
 #Load visits with preprocessed dispositions.
 visits <- as.data.frame(fread((paste0(savepath, "intermediate-files/visits-with-processed-dispositions.csv")))) %>%
     select(-c(V1, any_recorded_vitals)) %>% mutate(is_admitted=ifelse(disposition=="Admit", 1, 0))
